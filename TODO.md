@@ -27,7 +27,7 @@
 7. [ ] Worker pool e concorrência
     - Implementar workers que consumam jobs e respeitem limites de concorrência.
     - Critério: processar N uploads em paralelo sem saturar CPU/memória.
-    - Status atual: orquestração de processamento implementada (ProcessJob com atualização de status), faltando fila/workers concorrentes.
+   - Status atual: orquestração de processamento implementada (ProcessJob com atualização de status) e base da fila Redis pronta (message + adapter + producer); faltam integração producer no fluxo de upload e consumer/worker pool concorrente.
     - Estratégia validada:
        - SQLite continua como fonte da verdade dos jobs (status, paths, tentativas).
        - Redis entra para fila/distribuição de trabalho entre workers.
@@ -35,8 +35,8 @@
        - Worker pool com limite fixo de concorrência (evitar saturar CPU/RAM).
        - Backpressure com buffer controlado para não crescer memória com picos.
     - Fases de implementação:
-       - [ ] Fase 1 - Infra Redis local com Docker Compose.
-       - [ ] Fase 2 - Contrato de fila em Go (producer/consumer desacoplados por interface).
+       - [x] Fase 1 - Infra Redis local com Docker Compose.
+       - [x] Fase 2 - Contrato de fila em Go (producer/consumer desacoplados por interface).
        - [ ] Fase 3 - Enfileirar job no Redis ao criar job no SQLite.
        - [ ] Fase 4 - Dispatcher + worker pool (concorrência limitada).
        - [ ] Fase 5 - Retry com backoff + limite de tentativas + dead-letter.
@@ -57,11 +57,13 @@
    - Critério: pipeline de testes básicos passando localmente.
    - Status atual: testes unitários implementados e passando (`go test ./... -v`); falta definir script operacional para execução local de processamento com ffmpeg (ou alternativa via container).
    - Escopo adicional alinhado para fila:
-     - [ ] testes unitários do queue adapter (Redis).
+       - [x] testes unitários do queue adapter (Redis).
+       - [x] testes de integração do queue adapter (Redis, build tag integration).
      - [ ] testes do worker pool (concorrência e throughput).
      - [ ] testes de retry/backoff (falha transitória e falha definitiva).
      - [ ] testes de recuperação após restart (jobs presos em processing).
-     - [ ] script local para subir Redis e worker (dev).
+       - [ ] script local para subir Redis e worker (dev).
+       - Status atual: script local para subir Redis pronto; falta script/processo do worker.
 
 9. [ ] Documentação e hardening
    - Documentar configurações, limits, cleanup e handling de falhas.
@@ -74,8 +76,8 @@
 10. [ ] Redis e arquitetura de fila (estudo guiado)
    - Objetivo: aprender gerenciamento de filas com Redis mantendo consistência com SQLite.
    - Tópicos:
-     - [ ] escolha da abordagem inicial (Redis List) e evolução futura (Redis Streams).
-     - [ ] contrato de mensagem do job (job_id, attempts, timestamps, metadata minima).
+    - [x] escolha da abordagem inicial (Redis List) e evolução futura (Redis Streams).
+       - [x] contrato de mensagem do job (job_id, attempts, timestamps, metadata minima).
      - [ ] semântica de ACK/NACK e requeue.
      - [ ] política de dead-letter para jobs excedidos.
      - [ ] estratégia de idempotência no processamento por job_id.

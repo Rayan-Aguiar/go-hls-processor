@@ -1,0 +1,15 @@
+{
+  "go.goroot": "/snap/go/current",
+  "go.alternateTools": {
+    "go": "/snap/bin/go"
+  },
+  "gopls": {
+    "build.buildFlags": [
+      "-tags=integration"
+    ]
+  },
+  "go.toolsEnvVars": {
+    "GOTOOLCHAIN": "local",
+    "PATH": "/snap/bin:${env:PATH}"
+  }
+}
