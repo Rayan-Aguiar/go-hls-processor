@@ -13,8 +13,8 @@ type Job struct {
 
 type JobStatus string
 
-func (j JobStatus) String() {
-	panic("unimplemented")
+func (j JobStatus) String() string {
+    return string(j)
 }
 
 const (
