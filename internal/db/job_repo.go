@@ -1,9 +1,9 @@
 package db
 
 import (
-	"context"
-	"database/sql"
-	"time"
+    "context"
+    "database/sql"
+    "time"
 )
 
 type Job struct {
@@ -15,13 +15,18 @@ type Job struct {
     UpdatedAt sql.NullTime
 }
 
-func InsertJob(ctx context.Context, conn *sql.DB, j Job) error {
+// InsertJob insere um novo job no banco de dados
+func InsertJob(conn *sql.DB, j Job) error {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    
     _, err := conn.ExecContext(ctx,
         `INSERT INTO jobs(id,status,input_path,created_at) VALUES(?,?,?,?)`,
         j.ID, j.Status, j.InputPath, j.CreatedAt)
     return err
 }
 
+// GetJobByID busca um job pelo ID
 func GetJobByID(ctx context.Context, conn *sql.DB, id string) (Job, error) {
     var j Job
     row := conn.QueryRowContext(ctx,

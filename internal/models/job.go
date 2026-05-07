@@ -13,6 +13,10 @@ type Job struct {
 
 type JobStatus string
 
+func (j JobStatus) String() {
+	panic("unimplemented")
+}
+
 const (
 	JobStatusPending    JobStatus = "pending"
 	JobStatusProcessing JobStatus = "processing"
