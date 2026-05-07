@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env.example
+README.md
+TODO.md
+data/
+tmp/
+.air
+.air.toml
+*.db
+.vscode
+vendor/

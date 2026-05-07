@@ -1,0 +1,19 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: video-processor-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass videoproc2024
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "videoproc2024", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - video-processor-network
+
+networks:
+  video-processor-network:
+    driver: bridge
