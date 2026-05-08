@@ -73,9 +73,19 @@ func main() {
         DeadLetterQueue:    envOrDefault("DEAD_LETTER_QUEUE", "video:jobs:dead"),
         RetrySweepInterval: time.Duration(envIntOrDefault("RETRY_SWEEP_INTERVAL_SECONDS", 1)) * time.Second,
         RetryMoveBatch:     int64(envIntOrDefault("RETRY_MOVE_BATCH", 100)),
+
+        RecoverySweepInterval: time.Duration(envIntOrDefault("RECOVERY_SWEEP_INTERVAL_SECONDS", 30)) * time.Second,
     }
 
-    pool := worker.NewPool(redisAdapter, processingAdapter{processor: processor}, cfg)
+    recovery := service.NewRecoveryService(
+        conn,
+        redisAdapter,
+        cfg.QueueName,
+        time.Duration(envIntOrDefault("RECOVERY_STUCK_AFTER_SECONDS", 120))*time.Second,
+        envIntOrDefault("RECOVERY_BATCH_SIZE", 100),
+    )
+
+    pool := worker.NewPool(redisAdapter, processingAdapter{processor: processor}, cfg).WithRecovery(recovery)
 
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()

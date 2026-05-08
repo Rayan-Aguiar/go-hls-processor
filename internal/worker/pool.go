@@ -14,6 +14,10 @@ type JobProcessor interface {
     ProcessJob(ctx context.Context, jobID string) error
 }
 
+type RecoveryRunner interface {
+    Recover(ctx context.Context) (int, error)
+}
+
 type Config struct {
     QueueName             string
     WorkerCount           int
@@ -21,7 +25,6 @@ type Config struct {
     JobTimeout            time.Duration
     BufferSize            int
 
-    // Fase 5
     MaxRetries         int
     RetryBackoffBase   time.Duration
     RetryBackoffMax    time.Duration
@@ -29,11 +32,14 @@ type Config struct {
     DeadLetterQueue    string
     RetrySweepInterval time.Duration
     RetryMoveBatch     int64
+
+    RecoverySweepInterval time.Duration
 }
 
 type Pool struct {
     adapter   queue.Adapter
     processor JobProcessor
+    recovery  RecoveryRunner
     cfg       Config
 
     jobs   chan queue.JobMessage
@@ -55,7 +61,6 @@ func NewPool(adapter queue.Adapter, processor JobProcessor, cfg Config) *Pool {
         cfg.BufferSize = cfg.WorkerCount * 2
     }
 
-    // Fase 5 defaults
     if cfg.MaxRetries <= 0 {
         cfg.MaxRetries = 3
     }
@@ -77,6 +82,9 @@ func NewPool(adapter queue.Adapter, processor JobProcessor, cfg Config) *Pool {
     if cfg.RetryMoveBatch <= 0 {
         cfg.RetryMoveBatch = 100
     }
+    if cfg.RecoverySweepInterval <= 0 {
+        cfg.RecoverySweepInterval = 30 * time.Second
+    }
 
     return &Pool{
         adapter:   adapter,
@@ -86,6 +94,11 @@ func NewPool(adapter queue.Adapter, processor JobProcessor, cfg Config) *Pool {
     }
 }
 
+func (p *Pool) WithRecovery(recovery RecoveryRunner) *Pool {
+    p.recovery = recovery
+    return p
+}
+
 func (p *Pool) Start(parent context.Context) {
     ctx, cancel := context.WithCancel(parent)
     p.cancel = cancel
@@ -93,9 +106,13 @@ func (p *Pool) Start(parent context.Context) {
     p.wg.Add(1)
     go p.dispatcher(ctx)
 
-    // Promove retries vencidos do ZSET para a fila principal.
     p.wg.Add(1)
     go p.retryPromoter(ctx)
+
+    if p.recovery != nil {
+        p.wg.Add(1)
+        go p.recoveryLoop(ctx)
+    }
 
     for i := 0; i < p.cfg.WorkerCount; i++ {
         p.wg.Add(1)
@@ -172,6 +189,29 @@ func (p *Pool) retryPromoter(ctx context.Context) {
     }
 }
 
+func (p *Pool) recoveryLoop(ctx context.Context) {
+    defer p.wg.Done()
+
+    ticker := time.NewTicker(p.cfg.RecoverySweepInterval)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case <-ticker.C:
+            recovered, err := p.recovery.Recover(ctx)
+            if err != nil {
+                log.Printf("recovery loop error: %v", err)
+                continue
+            }
+            if recovered > 0 {
+                log.Printf("recovery loop recovered=%d stuck jobs", recovered)
+            }
+        }
+    }
+}
+
 func (p *Pool) worker(ctx context.Context, workerID int) {
     defer p.wg.Done()
 
@@ -205,48 +245,22 @@ func (p *Pool) handleFailure(ctx context.Context, workerID int, msg queue.JobMes
     next.FailedAt = &now
     next.LastError = processingErr.Error()
 
-    // excedeu retries: manda para dead-letter
     if next.Attempts > p.cfg.MaxRetries {
         if err := p.adapter.Enqueue(ctx, p.cfg.DeadLetterQueue, next); err != nil {
-            log.Printf(
-                "worker=%d job=%s dead-letter enqueue error=%v original=%v",
-                workerID,
-                msg.JobID,
-                err,
-                processingErr,
-            )
+            log.Printf("worker=%d job=%s dead-letter enqueue error=%v original=%v", workerID, msg.JobID, err, processingErr)
             return
         }
-        log.Printf(
-            "worker=%d job=%s moved_to_dead_letter attempts=%d error=%v",
-            workerID,
-            msg.JobID,
-            next.Attempts,
-            processingErr,
-        )
+        log.Printf("worker=%d job=%s moved_to_dead_letter attempts=%d error=%v", workerID, msg.JobID, next.Attempts, processingErr)
         return
     }
 
     delay := p.retryBackoff(next.Attempts)
     if err := p.adapter.EnqueueWithDelay(ctx, p.cfg.RetryQueue, next, delay); err != nil {
-        log.Printf(
-            "worker=%d job=%s retry enqueue error=%v original=%v",
-            workerID,
-            msg.JobID,
-            err,
-            processingErr,
-        )
+        log.Printf("worker=%d job=%s retry enqueue error=%v original=%v", workerID, msg.JobID, err, processingErr)
         return
     }
 
-    log.Printf(
-        "worker=%d job=%s scheduled_retry attempt=%d delay=%s error=%v",
-        workerID,
-        msg.JobID,
-        next.Attempts,
-        delay,
-        processingErr,
-    )
+    log.Printf("worker=%d job=%s scheduled_retry attempt=%d delay=%s error=%v", workerID, msg.JobID, next.Attempts, delay, processingErr)
 }
 
 func (p *Pool) retryBackoff(attempt int) time.Duration {
@@ -254,7 +268,6 @@ func (p *Pool) retryBackoff(attempt int) time.Duration {
         return p.cfg.RetryBackoffBase
     }
 
-    // base * 2^(attempt-1)
     mult := math.Pow(2, float64(attempt-1))
     delay := time.Duration(float64(p.cfg.RetryBackoffBase) * mult)
 

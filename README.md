@@ -6,20 +6,26 @@ Projeto de estudo para aprender Go na pratica, focado em backend: upload de vide
 
 ## Visão geral
 
-Fluxo básico:
-- Cliente envia um arquivo de vídeo para a API.
-- A API salva o arquivo temporariamente e enfileira um job de processamento.
-- Um worker executa `ffmpeg` para gerar múltiplas qualidades (360p → 1080p), HLS (`.m3u8` + segments) e thumbnails.
-- Os artefatos sao organizados por job e os caminhos sao salvos em PostgreSQL.
+Fluxo implementado atualmente:
+- A camada de upload valida arquivo, salva em disco e persiste o job no PostgreSQL.
+- O job é enfileirado no Redis para processamento assíncrono.
+- Um worker pool consome a fila e executa ffmpeg para HLS (360p → 1080p) e thumbnail.
+- Os artefatos ficam organizados por job e os caminhos/status são atualizados no PostgreSQL.
+- Em falhas, o worker aplica retry com backoff, dead-letter e recuperação de jobs presos em processing.
+
+Observação:
+- O endpoint HTTP de upload ainda não foi exposto no servidor; hoje o server possui healthcheck e ping de banco.
 
 ## Principais funcionalidades
 
-- Upload de video via HTTP (multipart)
+- Upload service (validação, persistência e enqueue)
 - Geracao de HLS em multiplas qualidades
 - Geracao de thumbnails
 - Persistencia de metadados em PostgreSQL
 - Fila Redis para distribuicao dos jobs
 - Worker pool concorrente para processamento assincrono
+- Retry com backoff + dead-letter queue
+- Recovery loop para jobs presos em processing
 
 ## Stack atual
 
@@ -41,26 +47,31 @@ Fluxo básico:
 
 ## Estado atual do projeto
 
-- Base de upload validando e persistindo job
-- Enqueue do job em Redis apos persistencia
-- Dispatcher e worker pool concorrente implementados
-- Processamento HLS + thumbnail implementado
-- Testes unitarios e de integracao da camada de fila
+- PostgreSQL como fonte da verdade de jobs (status e paths)
+- Redis como fila principal + retry delayed (ZSET) + dead-letter
+- Upload service implementado (validação, salvamento, persistência e enqueue com rollback)
+- Dispatcher + worker pool com concorrência limitada e timeout por job
+- Processamento HLS + thumbnail com atualização de status (pending/processing/completed/failed)
+- Recovery de jobs stuck em processing após reinício/falha de worker
+- Testes unitários passando para queue, worker, service, validator e ffmpeg
 
 ## Como rodar local
 
 1. Subir infraestrutura:
-	- `docker compose up -d`
+	- docker compose up -d
 2. Aplicar migrations:
-	- `go run ./cmd/migrate`
+	- go run ./cmd/migrate
 3. Subir servidor:
-	- `go run ./cmd/server`
+	- go run ./cmd/server
 4. Subir worker:
-	- `go run ./cmd/worker`
+	- go run ./cmd/worker
+5. Rodar testes:
+	- go test ./... -count=1 -v
 
 ## Proximos passos
 
-- Retry/backoff e dead-letter (fase 5)
-- Recuperacao de jobs presos (fase 6)
-- Observabilidade de fila e workers
-- Endpoint de upload para fluxo fim a fim via HTTP
+- Expor endpoint HTTP de upload (multipart) no server
+- Criar endpoint para consulta de status do job
+- Definir idempotência por job_id no processamento
+- Implementar observabilidade (métricas e logs operacionais)
+- Criar playbook de troubleshooting para operação local

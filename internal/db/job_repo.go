@@ -65,3 +65,40 @@ func DeleteJob(conn *sql.DB, id string) error {
 		`DELETE FROM jobs WHERE id = $1`, id)
 	return err
 }
+
+func ListStuckProcessingJobs(conn *sql.Conn, cutoff time.Time, limit int) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := conn.QueryContext(ctx, `
+        SELECT id
+        FROM jobs
+        WHERE status = $1
+          AND COALESCE(updated_at, created_at) < $2
+        ORDER BY created_at ASC
+        LIMIT $3
+    `, "processing", cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}

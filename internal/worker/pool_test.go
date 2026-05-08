@@ -276,3 +276,45 @@ func TestPoolRetryPromoterRuns(t *testing.T) {
         t.Fatal("expected retry promoter to call RequeueDue at least once")
     }
 }
+
+type fakeRecovery struct {
+    mu        sync.Mutex
+    calls     int
+    recovered int
+    err       error
+}
+
+func (r *fakeRecovery) Recover(_ context.Context) (int, error) {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    r.calls++
+    return r.recovered, r.err
+}
+
+func TestPoolRecoveryLoopRuns(t *testing.T) {
+    adapter := newFakeAdapter(nil)
+    processor := fakeProcessor{processFn: func(_ context.Context, _ string) error { return nil }}
+    recovery := &fakeRecovery{recovered: 1}
+
+    p := NewPool(adapter, processor, Config{
+        QueueName:             "video:jobs",
+        WorkerCount:           1,
+        BufferSize:            1,
+        RetrySweepInterval:    50 * time.Millisecond,
+        RecoverySweepInterval: 20 * time.Millisecond,
+        DequeueTimeoutSeconds: 1,
+    }).WithRecovery(recovery)
+
+    p.Start(context.Background())
+    defer p.Stop()
+
+    time.Sleep(90 * time.Millisecond)
+
+    recovery.mu.Lock()
+    calls := recovery.calls
+    recovery.mu.Unlock()
+
+    if calls == 0 {
+        t.Fatal("expected recovery loop to call Recover at least once")
+    }
+}

@@ -39,18 +39,18 @@
        - [x] Fase 2 - Contrato de fila em Go (producer/consumer desacoplados por interface).
        - [x] Fase 3 - Enfileirar job no Redis ao criar job no PostgreSQL.
       - [x] Fase 4 - Dispatcher + worker pool (concorrência limitada).
-       - [ ] Fase 5 - Retry com backoff + limite de tentativas + dead-letter.
-       - [ ] Fase 6 - Recuperação de jobs presos em processing (reaper).
+       - [x] Fase 5 - Retry com backoff + limite de tentativas + dead-letter.
+      - [x] Fase 6 - Recuperação de jobs presos em processing (reaper).
     - Regras de capacidade (inicial):
        - [ ] pool size inicial: max(2, min(6, CPU/2)).
        - [ ] buffer interno: 2x ou 3x o tamanho do pool.
        - [ ] timeout por job de processamento.
        - [ ] sem ffmpeg rodando na thread da API.
     - Metas de robustez para volume (200 a 1000 jobs):
-       - [ ] backlog fica na fila (não em memória da API).
+         - [x] backlog fica na fila (não em memória da API).
        - [ ] servidor continua responsivo sob carga.
-       - [ ] jobs falhos não travam fila inteira.
-       - [ ] reinício da aplicação não perde job pendente.
+         - [x] jobs falhos não travam fila inteira.
+      - [x] reinício da aplicação não perde job pendente.
 
 8. [ ] Testes e scripts locais
    - Testes unitários e scripts para rodar `ffmpeg` localmente (ou container).
@@ -60,8 +60,8 @@
        - [x] testes unitários do queue adapter (Redis).
        - [x] testes de integração do queue adapter (Redis, build tag integration).
    - [x] testes do worker pool (concorrência e throughput).
-     - [ ] testes de retry/backoff (falha transitória e falha definitiva).
-     - [ ] testes de recuperação após restart (jobs presos em processing).
+       - [x] testes de retry/backoff (falha transitória e falha definitiva).
+   - [x] testes de recuperação após restart (jobs presos em processing).
        - [ ] script local para subir Redis e worker (dev).
        - Status atual: script local para subir Redis pronto; falta script/processo do worker.
 
@@ -69,7 +69,7 @@
    - Documentar configurações, limits, cleanup e handling de falhas.
    - Critério: checklist de segurança e operação disponível.
    - Escopo adicional alinhado para operação:
-     - [ ] variáveis de ambiente de fila e concorrência (pool size, retry, timeout).
+   - [x] variáveis de ambiente de fila e concorrência (pool size, retry, timeout).
      - [ ] playbook de troubleshooting (fila parada, jobs stuck, saturação).
      - [ ] estratégia de observabilidade (logs e métricas básicas de fila/worker).
 
@@ -78,8 +78,8 @@
    - Tópicos:
     - [x] escolha da abordagem inicial (Redis List) e evolução futura (Redis Streams).
        - [x] contrato de mensagem do job (job_id, attempts, timestamps, metadata minima).
-     - [ ] semântica de ACK/NACK e requeue.
-     - [ ] política de dead-letter para jobs excedidos.
+      - [x] semântica de ACK/NACK e requeue.
+      - [x] política de dead-letter para jobs excedidos.
      - [ ] estratégia de idempotência no processamento por job_id.
 
 11. [ ] Observabilidade de fila e workers
