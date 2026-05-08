@@ -79,7 +79,7 @@
      - [x] contrato de mensagem do job (job_id, attempts, timestamps, metadata minima).
      - [x] semântica de ACK/NACK e requeue.
      - [x] política de dead-letter para jobs excedidos.
-     - [ ] estratégia de idempotência no processamento por job_id.
+  - [x] estratégia de idempotência no processamento por job_id.
 
 11. [ ] Observabilidade de fila e workers
   - Métricas mínimas:
@@ -133,3 +133,11 @@ Notas:
     - [x] recovery reenfileira `pending` órfão e atualiza `updated_at`.
     - [x] testes cobrindo pending stale e pending fresh.
     - [x] sweep de recovery ajustado para intervalo mais curto no dev (`RECOVERY_SWEEP_INTERVAL_SECONDS=5`).
+
+16. [x] Idempotência do processamento por `job_id`
+  - Objetivo: impedir processamento duplicado do mesmo job em cenários de retry/recovery/duplicação de mensagem.
+  - Entregas:
+   - [x] transição atômica para `processing` no repositório (`TryMarkJobProcessing`) somente a partir de `pending` ou `failed`.
+   - [x] `ProcessingService` ignora duplicata com sucesso quando status atual já está `processing` ou `completed`.
+   - [x] retries continuam válidos para jobs em `failed` (reentrada permitida).
+   - [x] testes unitários cobrindo skip idempotente para jobs já `processing` e `completed`.
