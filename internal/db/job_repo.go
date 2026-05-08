@@ -21,7 +21,7 @@ func InsertJob(conn *sql.DB, j Job) error {
 	defer cancel()
 
 	_, err := conn.ExecContext(ctx,
-		`INSERT INTO jobs(id,status,input_path,created_at) VALUES(?,?,?,?)`,
+		`INSERT INTO jobs(id,status,input_path,created_at) VALUES($1,$2,$3,$4)`,
 		j.ID, j.Status, j.InputPath, j.CreatedAt)
 	return err
 }
@@ -30,7 +30,7 @@ func InsertJob(conn *sql.DB, j Job) error {
 func GetJobByID(ctx context.Context, conn *sql.DB, id string) (Job, error) {
 	var j Job
 	row := conn.QueryRowContext(ctx,
-		`SELECT id,status,input_path,output_dir,created_at,updated_at FROM jobs WHERE id = ?`, id)
+		`SELECT id,status,input_path,output_dir,created_at,updated_at FROM jobs WHERE id = $1`, id)
 	err := row.Scan(&j.ID, &j.Status, &j.InputPath, &j.OutputDir, &j.CreatedAt, &j.UpdatedAt)
 	return j, err
 }
@@ -40,7 +40,7 @@ func UpdateJobStatus(conn *sql.DB, id, status string) error {
 	defer cancel()
 
 	_, err := conn.ExecContext(ctx,
-		`UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE jobs SET status = $1, updated_at = $2 WHERE id = $3`,
 		status, time.Now(), id,
 	)
 	return err
@@ -51,18 +51,17 @@ func UpdateJobOutputDir(conn *sql.DB, id, outputDir string) error {
 	defer cancel()
 
 	_, err := conn.ExecContext(ctx,
-		`UPDATE jobs SET output_dir = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE jobs SET output_dir = $1, updated_at = $2 WHERE id = $3`,
 		outputDir, time.Now(), id,
 	)
 	return err
 }
-
 
 func DeleteJob(conn *sql.DB, id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	_, err := conn.ExecContext(ctx,
-		`DELETE FROM jobs WHERE id = ?`, id)
+		`DELETE FROM jobs WHERE id = $1`, id)
 	return err
 }

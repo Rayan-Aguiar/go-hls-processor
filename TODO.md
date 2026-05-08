@@ -10,10 +10,10 @@
 3. [ ] Endpoint de upload
    - Receber arquivo via multipart, validar tipo e tamanho.
    - Critério: upload salva arquivo temporário e retorna job-id.
-   - Status atual: logica de validacao + salvamento + criacao de job no SQLite implementada em service; falta expor via endpoint HTTP.
+   - Status atual: logica de validacao + salvamento + criacao de job no PostgreSQL implementada em service; falta expor via endpoint HTTP.
 
 4. [x] Job e persistência mínima
-   - Modelar entidade `Job` e persistir metadados em SQLite.
+   - Modelar entidade `Job` e persistir metadados em PostgreSQL.
    - Critério: existir registro de job com status e paths vazios inicialmente.
 
 5. [x] Wrapper `ffmpeg` e geração HLS
@@ -27,9 +27,9 @@
 7. [ ] Worker pool e concorrência
     - Implementar workers que consumam jobs e respeitem limites de concorrência.
     - Critério: processar N uploads em paralelo sem saturar CPU/memória.
-   - Status atual: orquestração de processamento implementada (ProcessJob com atualização de status) e base da fila Redis pronta (message + adapter + producer); faltam integração producer no fluxo de upload e consumer/worker pool concorrente.
+   - Status atual: orquestração de processamento implementada (ProcessJob com atualização de status), integração de enqueue no upload concluída, consumer/dispatcher + worker pool concorrente implementados e base da fila Redis pronta (message + adapter + producer).
     - Estratégia validada:
-       - SQLite continua como fonte da verdade dos jobs (status, paths, tentativas).
+       - PostgreSQL continua como fonte da verdade dos jobs (status, paths, tentativas).
        - Redis entra para fila/distribuição de trabalho entre workers.
        - Upload/enfileiramento não bloqueia processamento pesado no request HTTP.
        - Worker pool com limite fixo de concorrência (evitar saturar CPU/RAM).
@@ -37,8 +37,8 @@
     - Fases de implementação:
        - [x] Fase 1 - Infra Redis local com Docker Compose.
        - [x] Fase 2 - Contrato de fila em Go (producer/consumer desacoplados por interface).
-       - [ ] Fase 3 - Enfileirar job no Redis ao criar job no SQLite.
-       - [ ] Fase 4 - Dispatcher + worker pool (concorrência limitada).
+       - [x] Fase 3 - Enfileirar job no Redis ao criar job no SQLite.
+      - [x] Fase 4 - Dispatcher + worker pool (concorrência limitada).
        - [ ] Fase 5 - Retry com backoff + limite de tentativas + dead-letter.
        - [ ] Fase 6 - Recuperação de jobs presos em processing (reaper).
     - Regras de capacidade (inicial):
@@ -59,7 +59,7 @@
    - Escopo adicional alinhado para fila:
        - [x] testes unitários do queue adapter (Redis).
        - [x] testes de integração do queue adapter (Redis, build tag integration).
-     - [ ] testes do worker pool (concorrência e throughput).
+   - [x] testes do worker pool (concorrência e throughput).
      - [ ] testes de retry/backoff (falha transitória e falha definitiva).
      - [ ] testes de recuperação após restart (jobs presos em processing).
        - [ ] script local para subir Redis e worker (dev).
@@ -93,3 +93,15 @@
 Notas:
 - Estimativas de complexidade podem ser adicionadas por tarefa.
 - Priorizar segurança de uploads (validação e limites) antes do processamento em massa.
+
+12. [x] Migração de banco para PostgreSQL
+    - Objetivo: substituir SQLite por PostgreSQL no runtime da aplicação, preparando para produção.
+    - Fases:
+      - [x] Infra local: container PostgreSQL no docker-compose.
+      - [x] Configuração: variáveis de ambiente (`DATABASE_URL`) e ajuste de scripts locais.
+      - [x] Camada de DB: conexão via driver PostgreSQL e tuning de pool.
+      - [x] Repositórios: queries e placeholders compatíveis com PostgreSQL.
+      - [x] Migrations: scripts/runner compatíveis com PostgreSQL.
+      - [x] Comandos app: `cmd/server`, `cmd/worker` e `cmd/migrate` usando PostgreSQL.
+      - [x] Validação final: migrations + testes + healthcheck com banco em container.
+   - Status atual: migracao concluida e validada localmente.

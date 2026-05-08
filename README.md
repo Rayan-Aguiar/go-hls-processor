@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Projeto de estudo para aprender Go na prática, focado em backend: upload de vídeo, processamento com `ffmpeg` (HLS), geração de thumbnails, organização de saída em `/tmp` e persistência de metadados em SQLite.
+Projeto de estudo para aprender Go na pratica, focado em backend: upload de video, processamento com ffmpeg (HLS), geracao de thumbnails, organizacao de saida por job e persistencia de metadados em PostgreSQL.
 
 ## Visão geral
 
@@ -10,45 +10,57 @@ Fluxo básico:
 - Cliente envia um arquivo de vídeo para a API.
 - A API salva o arquivo temporariamente e enfileira um job de processamento.
 - Um worker executa `ffmpeg` para gerar múltiplas qualidades (360p → 1080p), HLS (`.m3u8` + segments) e thumbnails.
-- Os artefatos são organizados em `/tmp/<job-id>/...` e os caminhos são salvos em um banco SQLite.
+- Os artefatos sao organizados por job e os caminhos sao salvos em PostgreSQL.
 
 ## Principais funcionalidades
 
-- Upload de vídeo via HTTP (multipart)
-- Geração de HLS em múltiplas qualidades
-- Geração de thumbnails (configurável: 1 ou várias)
-- Organização de arquivos em `/tmp` por job
-- Persistência de metadados (SQLite)
-- Processamento concorrente com worker pool
+- Upload de video via HTTP (multipart)
+- Geracao de HLS em multiplas qualidades
+- Geracao de thumbnails
+- Persistencia de metadados em PostgreSQL
+- Fila Redis para distribuicao dos jobs
+- Worker pool concorrente para processamento assincrono
 
-## Estrutura proposta (exemplo)
+## Stack atual
 
-- `cmd/` — binários/executáveis
-- `internal/handler` — handlers HTTP
-- `internal/service` — lógica de orquestração (jobs)
-- `internal/ffmpeg` — abstração para chamar ffmpeg
-- `tmp/` — diretório base para saídas (configurável)
-- `migrations/` — scripts SQLite (opcional)
+- Go 1.26
+- PostgreSQL 16 (container)
+- Redis 7 (container)
+- FFmpeg (instalado localmente)
 
-## Etapas de desenvolvimento (visão rápida)
+## Estrutura principal
 
-1. Organização do repositório e README/TODO
-2. Endpoint de upload + validações (tamanho, tipo)
-3. Estrutura mínima de job + persistência SQLite
-4. Wrapper `ffmpeg` para gerar HLS e thumbnails
-5. Worker pool para processar uploads de forma concorrente
-6. Testes automatizados e scripts locais (ex.: `docker run` do ffmpeg)
-7. Documentação e checklist de segurança
+- `cmd/server` - processo HTTP
+- `cmd/migrate` - aplicacao das migrations
+- `cmd/worker` - consumidor da fila e pool de workers
+- `internal/queue` - adapter Redis + producer
+- `internal/worker` - dispatcher + worker pool
+- `internal/service` - upload e processamento
+- `internal/db` - conexao e repositorios
+- `migrations` - SQL de schema
 
-## Boas práticas e decisões técnicas
+## Estado atual do projeto
 
-- Tratar `ffmpeg` como processo externo (não biblioteca), controlar via `context.Context`.
-- Validar uploads (MIME type, tamanho máximo) antes de enfileirar o job.
-- Escrever arquivos de forma atômica e usar diretórios temporários por job.
-- Evitar armazenar arquivos binários no banco; guardar apenas metadados/paths.
-- Usar um worker pool com limite de concorrência e retry/backoff em falhas.
-- Registrar logs estruturados para debugar jobs (job-id em logs).
+- Base de upload validando e persistindo job
+- Enqueue do job em Redis apos persistencia
+- Dispatcher e worker pool concorrente implementados
+- Processamento HLS + thumbnail implementado
+- Testes unitarios e de integracao da camada de fila
 
-## Próximos passos sugeridos
+## Como rodar local
 
-- Concorda com a estrutura proposta? Se sim, posso gerar o esqueleto de pastas (`cmd/`, `internal/...`) e exemplos de arquivos de configuração.
+1. Subir infraestrutura:
+	- `docker compose up -d`
+2. Aplicar migrations:
+	- `go run ./cmd/migrate`
+3. Subir servidor:
+	- `go run ./cmd/server`
+4. Subir worker:
+	- `go run ./cmd/worker`
+
+## Proximos passos
+
+- Retry/backoff e dead-letter (fase 5)
+- Recuperacao de jobs presos (fase 6)
+- Observabilidade de fila e workers
+- Endpoint de upload para fluxo fim a fim via HTTP

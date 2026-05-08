@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,22 +19,18 @@ import (
 func main() {
 	_ = godotenv.Load()
 
-	dbPath := os.Getenv("SQLITE_PATH")
-	if dbPath == "" {
-		dbPath = "./data/app.db"
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://videoproc:videoproc@localhost:5432/video_processor?sslmode=disable"
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		log.Fatalf("criar pasta do db: %v", err)
-	}
-
-	conn, err := db.Open(dbPath)
+	conn, err := db.Open(databaseURL)
 	if err != nil {
 		log.Fatalf("conectar ao db: %v", err)
 	}
 	defer conn.Close()
 
-	log.Println("🚀 SQLite conectado com sucesso!")
+	log.Println("🚀 PostgreSQL conectado com sucesso!")
 
 	port := os.Getenv("PORT")
 	if port == "" {
