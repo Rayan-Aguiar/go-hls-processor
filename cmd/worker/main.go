@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -11,9 +13,11 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/rayan-aguiar/video-processor/internal/db"
 	"github.com/rayan-aguiar/video-processor/internal/ffmpeg"
+	"github.com/rayan-aguiar/video-processor/internal/observability"
 	"github.com/rayan-aguiar/video-processor/internal/progress"
 	"github.com/rayan-aguiar/video-processor/internal/queue"
 	"github.com/rayan-aguiar/video-processor/internal/service"
@@ -109,6 +113,21 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	metricsPort := envOrDefault("WORKER_METRICS_PORT", "9101")
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsServer := &http.Server{
+		Addr:              ":" + metricsPort,
+		Handler:           observability.MetricsMiddleware(metricsMux),
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	go func() {
+		log.Printf("worker metrics ouvindo em http://localhost:%s/metrics", metricsPort)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("erro no servidor de metrics do worker: %v", err)
+		}
+	}()
+
 	pool.Start(ctx)
 
 	stop := make(chan os.Signal, 1)
@@ -116,6 +135,11 @@ func main() {
 	<-stop
 
 	log.Println("sinal recebido, finalizando worker...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("erro ao encerrar servidor de metrics do worker: %v", err)
+	}
 	pool.Stop()
 }
 

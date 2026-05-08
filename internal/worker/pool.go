@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rayan-aguiar/video-processor/internal/observability"
 	"github.com/rayan-aguiar/video-processor/internal/queue"
 )
 
@@ -184,6 +185,7 @@ func (p *Pool) retryPromoter(ctx context.Context) {
 				log.Printf("retry promoter error: %v", err)
 				continue
 			}
+			observability.ObserveRetryPromoted(moved)
 			if moved > 0 {
 				log.Printf("retry promoter moved=%d from=%s to=%s", moved, p.cfg.RetryQueue, p.cfg.QueueName)
 			}
@@ -204,9 +206,11 @@ func (p *Pool) recoveryLoop(ctx context.Context) {
 		case <-ticker.C:
 			recovered, err := p.recovery.Recover(ctx)
 			if err != nil {
+				observability.ObserveRecoveryRun(false)
 				log.Printf("recovery loop error: %v", err)
 				continue
 			}
+			observability.ObserveRecoveryRun(true)
 			if recovered > 0 {
 				log.Printf("recovery loop recovered=%d stuck jobs", recovered)
 			}
@@ -227,15 +231,19 @@ func (p *Pool) worker(ctx context.Context, workerID int) {
 			}
 
 			log.Printf("worker=%d iniciando job=%s attempts=%d", workerID, msg.JobID, msg.Attempts)
+			observability.ObserveWorkerJobStart()
+			startedAt := time.Now()
 
 			jobCtx, cancel := context.WithTimeout(ctx, p.cfg.JobTimeout)
 			err := p.processor.ProcessJob(jobCtx, msg.JobID)
 			cancel()
 
 			if err != nil {
+				observability.ObserveWorkerJobDone(time.Since(startedAt), false)
 				p.handleFailure(ctx, workerID, msg, err)
 				continue
 			}
+			observability.ObserveWorkerJobDone(time.Since(startedAt), true)
 
 			log.Printf("worker=%d job=%s completed", workerID, msg.JobID)
 		}
@@ -254,6 +262,7 @@ func (p *Pool) handleFailure(ctx context.Context, workerID int, msg queue.JobMes
 			log.Printf("worker=%d job=%s dead-letter enqueue error=%v original=%v", workerID, msg.JobID, err, processingErr)
 			return
 		}
+		observability.ObserveDeadLettered()
 		log.Printf("worker=%d job=%s moved_to_dead_letter attempts=%d error=%v", workerID, msg.JobID, next.Attempts, processingErr)
 		return
 	}
@@ -263,6 +272,7 @@ func (p *Pool) handleFailure(ctx context.Context, workerID int, msg queue.JobMes
 		log.Printf("worker=%d job=%s retry enqueue error=%v original=%v", workerID, msg.JobID, err, processingErr)
 		return
 	}
+	observability.ObserveRetryScheduled()
 
 	log.Printf("worker=%d job=%s scheduled_retry attempt=%d delay=%s error=%v", workerID, msg.JobID, next.Attempts, delay, processingErr)
 }

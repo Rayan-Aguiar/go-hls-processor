@@ -20,6 +20,8 @@ Projeto de estudo focado em backend com Go para pipeline de video:
 - Progresso em tempo real via SSE + Redis Pub/Sub.
 - Dashboard web com upload, listagem, progresso e player HLS com seletor de qualidade.
 - Script de desenvolvimento unico (`./dev.sh`) subindo server + worker com logs prefixados.
+- Stack de observabilidade com Prometheus + Grafana + exporters de PostgreSQL/Redis.
+- Dashboards provisionados automaticamente para fila, jobs, API e worker.
 
 ## Arquitetura resumida
 - PostgreSQL: fonte da verdade dos jobs (status, paths, timestamps).
@@ -61,6 +63,49 @@ Projeto de estudo focado em backend com Go para pipeline de video:
   - Lista jobs/videos.
 - `GET /videos/{id}/{asset...}`
   - Serve `master.m3u8`, playlists por qualidade, `.ts` e `thumbnail.jpg`.
+- `GET /metrics`
+  - Metrica Prometheus da API.
+
+## Documentação da API
+
+### Swagger UI
+- Acesso: `http://localhost:8000/swagger`
+- Arquivo JSON bruto: `http://localhost:8000/swagger.json`
+- Documentação interativa de todos os endpoints com parâmetros, respostas e exemplos
+
+## Observabilidade
+### Componentes
+- Prometheus (`http://localhost:9090`)
+- Grafana (`http://localhost:3000`)
+- PostgreSQL Exporter (`http://localhost:9187/metrics`)
+- Redis Exporter (`http://localhost:9121/metrics`)
+
+### Endpoints de metricas da aplicacao
+- API: `http://localhost:8000/metrics`
+- Worker: `http://localhost:9101/metrics`
+
+### Dashboard
+- Dashboard provisionado: `Video Processor Overview`
+- Caminho no repo: `observability/grafana/dashboards/video-processor-overview.json`
+
+### O que monitorar (prioridade)
+- Backlog e saude da fila:
+  - `videoproc_queue_depth` (main/retry/dead)
+  - `videoproc_recovery_reenqueued_total`
+  - `videoproc_retry_promoted_total`
+- Estado dos jobs:
+  - `videoproc_jobs_total{status=...}` para `pending`, `processing`, `completed`, `failed`
+- Performance do worker:
+  - `videoproc_job_processing_duration_seconds` (p50/p95)
+  - `videoproc_jobs_processed_total{result=...}`
+  - `videoproc_worker_active_jobs`
+  - `videoproc_retry_scheduled_total` e `videoproc_dead_letter_total`
+- Saude da API:
+  - `videoproc_http_request_duration_seconds` (p95)
+  - `videoproc_http_requests_total` (throughput e 5xx)
+- Infra de suporte:
+  - métricas nativas do PostgreSQL exporter
+  - métricas nativas do Redis exporter
 
 ## Frontend dashboard
 Arquivo: `web/index.html`
@@ -85,6 +130,8 @@ Funcionalidades:
 ```bash
 docker compose up -d
 ```
+
+Isso sobe PostgreSQL, Redis, Prometheus, Grafana e exporters.
 
 ### Aplicar migrations
 ```bash
@@ -169,6 +216,13 @@ Arquivo base: `.env`
   - `RECOVERY_SWEEP_INTERVAL_SECONDS` (atual: 5)
   - `RECOVERY_STUCK_AFTER_SECONDS`
   - `RECOVERY_BATCH_SIZE`
+- Observabilidade:
+  - `WORKER_METRICS_PORT`
+  - `METRICS_SAMPLE_INTERVAL_SECONDS`
+  - `PROMETHEUS_PORT`
+  - `GRAFANA_PORT`
+  - `POSTGRES_EXPORTER_PORT`
+  - `REDIS_EXPORTER_PORT`
 
 ## Troubleshooting rapido
 ### `erro: porta 8000 ja esta em uso`
@@ -194,6 +248,20 @@ Mate o PID e suba novamente `./dev.sh`.
 - Suba o ambiente completo com `./dev.sh`.
 - Rode `go run ./cmd/loadtest ...` com arquivo de video real.
 - Considere aprovado quando o teste terminar com `PASS` (p95 e error_rate dentro dos limites definidos).
+
+### Playbook de troubleshooting (fila parada, jobs stuck, saturacao)
+- Fila parada (`pending` cresce e `processing` nao sobe):
+  - Verifique painel `Profundidade das Filas Redis` no Grafana.
+  - Se `videoproc_queue_depth{queue="video:jobs"}` sobe continuamente e `videoproc_worker_active_jobs` fica em zero, confirme worker ativo e endpoint `http://localhost:9101/metrics`.
+- Jobs stuck em `processing`:
+  - Observe `videoproc_jobs_total{status="processing"}` sem queda por janela longa.
+  - Verifique aumento em `videoproc_recovery_reenqueued_total` e `videoproc_recovery_runs_total` para validar atuação do recovery.
+- Saturacao do worker:
+  - `videoproc_worker_active_jobs` constante no teto e p95 de `videoproc_job_processing_duration_seconds` crescente.
+  - Acoes: reduzir concorrencia de upload, aumentar `WORKER_POOL_SIZE` com cautela e acompanhar latencia da API.
+- Saturacao da API:
+  - p95 de `videoproc_http_request_duration_seconds` sobe e taxa 5xx aumenta.
+  - Acoes: checar recursos de host, backlog da fila e gargalo de banco/redis via exporters.
 
 ## Proximos passos sugeridos
 - Observabilidade (metricas de fila, retries, tempos de processamento).

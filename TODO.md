@@ -66,13 +66,13 @@
      - [x] testes de recuperação após restart (jobs presos em processing).
      - [x] script local para subir Redis e worker (dev).
 
-9. [ ] Documentação e hardening
+9. [x] Documentação e hardening
   - Documentar configurações, limits, cleanup e handling de falhas.
   - Critério: checklist de segurança e operação disponível.
   - Escopo adicional alinhado para operação:
      - [x] variáveis de ambiente de fila e concorrência (pool size, retry, timeout).
-     - [ ] playbook de troubleshooting (fila parada, jobs stuck, saturação).
-     - [ ] estratégia de observabilidade (logs e métricas básicas de fila/worker).
+  - [x] playbook de troubleshooting (fila parada, jobs stuck, saturação).
+  - [x] estratégia de observabilidade (logs e métricas básicas de fila/worker).
 
 10. [x] Redis e arquitetura de fila (estudo guiado)
   - Objetivo: aprender gerenciamento de filas com Redis mantendo consistência com SQLite.
@@ -83,12 +83,12 @@
      - [x] política de dead-letter para jobs excedidos.
   - [x] estratégia de idempotência no processamento por job_id.
 
-11. [ ] Observabilidade de fila e workers
+11. [x] Observabilidade de fila e workers
   - Métricas mínimas:
-    - [ ] jobs pending, processing, completed, failed.
-    - [ ] tamanho da fila Redis.
-    - [ ] tempo médio de processamento por job.
-    - [ ] taxa de erro e taxa de retry.
+    - [x] jobs pending, processing, completed, failed.
+    - [x] tamanho da fila Redis.
+    - [x] tempo médio de processamento por job.
+    - [x] taxa de erro e taxa de retry.
   - Critério: conseguir identificar gargalo de CPU/fila com dados objetivos.
 
 Notas:
@@ -145,3 +145,11 @@ Notas:
    - [x] `ProcessingService` ignora duplicata com sucesso quando status atual já está `processing` ou `completed`.
    - [x] retries continuam válidos para jobs em `failed` (reentrada permitida).
    - [x] testes unitários cobrindo skip idempotente para jobs já `processing` e `completed`.
+
+17. [x] Documentação da API (Swagger/OpenAPI)
+  - Objetivo: mínima documentação interativa das rotas HTTP para consumidores da API.
+  - Entregas:
+    - [x] arquivo `docs/swagger.json` com especificação OpenAPI 2.0 de todos os endpoints.
+    - [x] UI Swagger servido em `GET /swagger` com documentação interativa.
+    - [x] exemplos de parâmetros, respostas e status codes para cada endpoint.
+    - [x] sem dependência de gerador automático (implementação manual/pragmática).

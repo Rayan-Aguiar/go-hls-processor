@@ -34,8 +34,78 @@ services:
     networks:
       - video-processor-network
 
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: ${GRAFANA_CONTAINER_NAME:-video-processor-grafana}
+    depends_on:
+      prometheus:
+        condition: service_started
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - video-processor-network
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ${PROMETHEUS_CONTAINER_NAME:-video-processor-prometheus}
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - video-processor-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: ${POSTGRES_EXPORTER_CONTAINER_NAME:-video-processor-postgres-exporter}
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-videoproc}:${POSTGRES_PASSWORD:-videoproc}@postgres:5432/${POSTGRES_DB:-video_processor}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    networks:
+      - video-processor-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: ${REDIS_EXPORTER_CONTAINER_NAME:-video-processor-redis-exporter}
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-videoproc2024}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    networks:
+      - video-processor-network
+
 volumes:
   postgres_data:
+  grafana_data:
+  prometheus_data:
 
 networks:
   video-processor-network:

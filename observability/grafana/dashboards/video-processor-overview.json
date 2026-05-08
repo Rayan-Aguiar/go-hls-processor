@@ -1,0 +1,352 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "panels": [
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "videoproc_jobs_total{job=\"video_processor_server\"}",
+                    "legendFormat": "{{status}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Jobs por Status",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+            },
+            "id": 2,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "videoproc_queue_depth{job=\"video_processor_server\"}",
+                    "legendFormat": "{{queue}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Profundidade das Filas Redis",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 8
+            },
+            "id": 3,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(videoproc_job_processing_duration_seconds_bucket{job=\"video_processor_worker\"}[5m])))",
+                    "legendFormat": "p95",
+                    "refId": "A"
+                },
+                {
+                    "expr": "histogram_quantile(0.50, sum by (le) (rate(videoproc_job_processing_duration_seconds_bucket{job=\"video_processor_worker\"}[5m])))",
+                    "legendFormat": "p50",
+                    "refId": "B"
+                }
+            ],
+            "title": "Tempo de Processamento por Job",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 8
+            },
+            "id": 4,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(videoproc_jobs_processed_total{job=\"video_processor_worker\",result=\"success\"}[5m]))",
+                    "legendFormat": "sucesso/s",
+                    "refId": "A"
+                },
+                {
+                    "expr": "sum(rate(videoproc_jobs_processed_total{job=\"video_processor_worker\",result=\"failed\"}[5m]))",
+                    "legendFormat": "falha/s",
+                    "refId": "B"
+                },
+                {
+                    "expr": "sum(rate(videoproc_retry_scheduled_total{job=\"video_processor_worker\"}[5m]))",
+                    "legendFormat": "retry/s",
+                    "refId": "C"
+                }
+            ],
+            "title": "Taxas de Resultado e Retry",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 8
+            },
+            "id": 5,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "videoproc_worker_active_jobs{job=\"video_processor_worker\"}",
+                    "legendFormat": "ativos",
+                    "refId": "A"
+                },
+                {
+                    "expr": "sum(increase(videoproc_dead_letter_total{job=\"video_processor_worker\"}[15m]))",
+                    "legendFormat": "DLQ (15m)",
+                    "refId": "B"
+                }
+            ],
+            "title": "Workers Ativos e Dead-letter",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 16
+            },
+            "id": 6,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(videoproc_http_request_duration_seconds_bucket{job=\"video_processor_server\"}[5m])))",
+                    "legendFormat": "p95",
+                    "refId": "A"
+                },
+                {
+                    "expr": "sum(rate(videoproc_http_requests_total{job=\"video_processor_server\"}[5m]))",
+                    "legendFormat": "req/s",
+                    "refId": "B"
+                }
+            ],
+            "title": "API Latência e Throughput",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 16
+            },
+            "id": 7,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(videoproc_http_requests_total{job=\"video_processor_server\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(videoproc_http_requests_total{job=\"video_processor_server\"}[5m])), 1e-9)",
+                    "legendFormat": "erro 5xx",
+                    "refId": "A"
+                },
+                {
+                    "expr": "sum(rate(videoproc_jobs_processed_total{job=\"video_processor_worker\",result=\"failed\"}[5m])) / clamp_min(sum(rate(videoproc_jobs_processed_total{job=\"video_processor_worker\"}[5m])), 1e-9)",
+                    "legendFormat": "falha worker",
+                    "refId": "B"
+                }
+            ],
+            "title": "Taxa de Erro (API/Worker)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 24
+            },
+            "id": 8,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "sum(increase(videoproc_recovery_reenqueued_total{job=\"video_processor_worker\"}[15m])) by (source)",
+                    "legendFormat": "recovery {{source}} (15m)",
+                    "refId": "A"
+                },
+                {
+                    "expr": "sum(increase(videoproc_retry_promoted_total{job=\"video_processor_worker\"}[15m]))",
+                    "legendFormat": "retry promoted (15m)",
+                    "refId": "B"
+                }
+            ],
+            "title": "Recovery e Retry Movimentação",
+            "type": "timeseries"
+        }
+    ],
+    "refresh": "5s",
+    "schemaVersion": 39,
+    "style": "dark",
+    "tags": [
+        "video-processor",
+        "observability"
+    ],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-30m",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Video Processor Overview",
+    "uid": "video-processor-overview",
+    "version": 1,
+    "weekStart": ""
+}

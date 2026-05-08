@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -207,4 +208,45 @@ func ListStuckPendingJobs(conn *sql.Conn, cutoff time.Time, limit int) ([]string
 	}
 
 	return ids, nil
+}
+
+func GetJobStatusCounts(ctx context.Context, conn *sql.DB) (map[string]int64, error) {
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	rows, err := conn.QueryContext(queryCtx, `
+		SELECT status, COUNT(*)
+		FROM jobs
+		GROUP BY status
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var status string
+		var count int64
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		counts[status] = count
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(counts) == 0 {
+		return map[string]int64{}, nil
+	}
+
+	for status := range counts {
+		if status == "" {
+			return nil, fmt.Errorf("status vazio encontrado na tabela jobs")
+		}
+	}
+
+	return counts, nil
 }

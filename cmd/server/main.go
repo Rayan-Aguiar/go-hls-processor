@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/rayan-aguiar/video-processor/internal/db"
+	"github.com/rayan-aguiar/video-processor/internal/observability"
 	"github.com/rayan-aguiar/video-processor/internal/progress"
 	"github.com/rayan-aguiar/video-processor/internal/queue"
 	"github.com/rayan-aguiar/video-processor/internal/service"
@@ -83,6 +85,8 @@ func main() {
 	defer redisAdapter.Close()
 
 	queueName := envOrDefault("QUEUE_NAME", "video:jobs")
+	retryQueue := envOrDefault("RETRY_QUEUE", "video:jobs:retry")
+	deadLetterQueue := envOrDefault("DEAD_LETTER_QUEUE", "video:jobs:dead")
 	producer := queue.NewProducer(redisAdapter, queueName)
 	dataDir := envOrDefault("DATA_DIR", "./data")
 	uploadSvc := service.New(dataDir, conn, producer)
@@ -98,6 +102,21 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+
+	metricsSampleIntervalSeconds := envIntOrDefault("METRICS_SAMPLE_INTERVAL_SECONDS", 5)
+	if metricsSampleIntervalSeconds <= 0 {
+		metricsSampleIntervalSeconds = 5
+	}
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+	go observability.StartStateSampler(
+		appCtx,
+		conn,
+		redisAdapter,
+		[]string{queueName, retryQueue, deadLetterQueue},
+		time.Duration(metricsSampleIntervalSeconds)*time.Second,
+	)
 
 	mux := http.NewServeMux()
 
@@ -132,10 +151,13 @@ func main() {
 	mux.HandleFunc("GET /jobs/{id}/events", deps.handleJobEvents)
 	mux.HandleFunc("GET /videos", deps.handleListVideos)
 	mux.HandleFunc("GET /videos/{id}/{asset...}", deps.handleVideoAsset)
+	mux.Handle("GET /metrics", promhttp.Handler())
+	mux.HandleFunc("GET /swagger", deps.handleSwaggerUI)
+	mux.HandleFunc("GET /swagger.json", deps.handleSwaggerJSON)
 
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           loggingMiddleware(mux),
+		Handler:           observability.MetricsMiddleware(loggingMiddleware(mux)),
 		ReadTimeout:       10 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -154,6 +176,7 @@ func main() {
 	<-stop
 
 	log.Println("sinal recebido, encerrando servidor...")
+	appCancel()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -337,6 +360,57 @@ func (s *serverDeps) handleVideoAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, fullPath)
+}
+
+func (s *serverDeps) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
+	html := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Processor API - Swagger UI</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.css">
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            SwaggerUIBundle({
+                url: "/swagger.json",
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                layout: "StandaloneLayout"
+            })
+        }
+    </script>
+</body>
+</html>`
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(html))
+}
+
+func (s *serverDeps) handleSwaggerJSON(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, filepath.Join("docs", "swagger.json"))
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

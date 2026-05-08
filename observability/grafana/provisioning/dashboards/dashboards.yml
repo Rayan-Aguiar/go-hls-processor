@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: video-processor-dashboards
+    orgId: 1
+    folder: Video Processor
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

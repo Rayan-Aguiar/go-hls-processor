@@ -1,0 +1,309 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "Video Processor API",
+        "description": "API para processamento de vídeos com HLS multiqualidade, fila Redis e worker pool.",
+        "version": "1.0"
+    },
+    "host": "localhost:8000",
+    "basePath": "/",
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "consumes": [
+        "application/json",
+        "multipart/form-data"
+    ],
+    "produces": [
+        "application/json"
+    ],
+    "paths": {
+        "/health": {
+            "get": {
+                "summary": "Health check da API",
+                "description": "Retorna status básico da API",
+                "tags": [
+                    "health"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "API saudável",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string"
+                                },
+                                "db": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/jobs/ping-db": {
+            "get": {
+                "summary": "Ping no banco de dados",
+                "description": "Verifica conectividade com PostgreSQL",
+                "tags": [
+                    "database"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Banco de dados respondendo",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string"
+                                },
+                                "db": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Banco de dados indisponível"
+                    }
+                }
+            }
+        },
+        "/jobs/upload": {
+            "post": {
+                "summary": "Fazer upload de vídeo",
+                "description": "Recebe arquivo de vídeo, valida e enfileira para processamento com HLS multiqualidade.",
+                "tags": [
+                    "jobs"
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "parameters": [
+                    {
+                        "name": "file",
+                        "in": "formData",
+                        "description": "Arquivo de vídeo (MP4, WebM, Matroska, etc)",
+                        "required": true,
+                        "type": "file"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Upload aceito e enfileirado",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "job_id": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Erro na validação do arquivo"
+                    }
+                }
+            }
+        },
+        "/jobs/{id}": {
+            "get": {
+                "summary": "Obter status de um job",
+                "description": "Retorna detalhes do job incluindo status (pending, processing, completed, failed) e paths de saída.",
+                "tags": [
+                    "jobs"
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Job ID",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detalhes do job",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                },
+                                "input_path": {
+                                    "type": "string"
+                                },
+                                "output_dir": {
+                                    "type": "string"
+                                },
+                                "created_at": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                "updated_at": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Job não encontrado"
+                    }
+                }
+            }
+        },
+        "/jobs/{id}/events": {
+            "get": {
+                "summary": "Progresso em tempo real (SSE)",
+                "description": "Server-Sent Events para acompanhar progresso do processamento em tempo real.",
+                "tags": [
+                    "jobs"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Job ID",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Stream de eventos de progresso"
+                    },
+                    "400": {
+                        "description": "Job ID inválido"
+                    }
+                }
+            }
+        },
+        "/videos": {
+            "get": {
+                "summary": "Listar vídeos processados",
+                "description": "Retorna lista de jobs/vídeos com status e metadados (thumbnail, playlist master, etc).",
+                "tags": [
+                    "videos"
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Limite de resultados (padrão: 100, máx: 500)",
+                        "required": false,
+                        "type": "integer",
+                        "default": 100
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de vídeos",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "count": {
+                                    "type": "integer"
+                                },
+                                "videos": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "status": {
+                                                "type": "string"
+                                            },
+                                            "created_at": {
+                                                "type": "string",
+                                                "format": "date-time"
+                                            },
+                                            "updated_at": {
+                                                "type": "string",
+                                                "format": "date-time"
+                                            },
+                                            "thumbnail_url": {
+                                                "type": "string"
+                                            },
+                                            "master_playlist_url": {
+                                                "type": "string"
+                                            },
+                                            "watch_url": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/videos/{id}/{asset...}": {
+            "get": {
+                "summary": "Servir asset de vídeo",
+                "description": "Serve playlist M3U8, segments TS ou thumbnail JPG. Exemplo: /videos/abc123/master.m3u8, /videos/abc123/360p/index.m3u8, /videos/abc123/thumbnail.jpg",
+                "tags": [
+                    "videos"
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Job ID",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "name": "asset",
+                        "in": "path",
+                        "description": "Caminho do asset (master.m3u8, 360p/index.m3u8, 360p/segment0.ts, thumbnail.jpg, etc)",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Asset encontrado"
+                    },
+                    "404": {
+                        "description": "Asset não encontrado"
+                    }
+                }
+            }
+        },
+        "/metrics": {
+            "get": {
+                "summary": "Métricas Prometheus",
+                "description": "Endpoint de métricas para coleta por Prometheus. Inclui latência de requests HTTP, status de jobs, profundidade de filas, performance do worker.",
+                "tags": [
+                    "observability"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Métricas em formato Prometheus"
+                    }
+                }
+            }
+        }
+    }
+}
