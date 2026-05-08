@@ -66,15 +66,27 @@ type ProcessJobOutput struct {
 }
 
 func (s *ProcessingService) ProcessJob(ctx context.Context, jobID string) (*ProcessJobOutput, error) {
+	acquired, currentStatus, err := db.TryMarkJobProcessing(s.conn, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("falha ao adquirir job para processamento: %w", err)
+	}
+
+	if !acquired {
+		log.Printf("processing: job=%s ignorado por idempotencia status=%s", jobID, currentStatus)
+		switch currentStatus {
+		case models.JobStatusProcessing.String(), models.JobStatusCompleted.String():
+			return &ProcessJobOutput{JobID: jobID}, nil
+		default:
+			return nil, fmt.Errorf("job %s em status inesperado para processamento: %s", jobID, currentStatus)
+		}
+	}
+
 	log.Printf("processing: job=%s buscando job no banco", jobID)
 	job, err := db.GetJobByID(ctx, s.conn, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("falha ao buscar job: %w", err)
 	}
 
-	if err := db.UpdateJobStatus(s.conn, jobID, string(models.JobStatusProcessing)); err != nil {
-		return nil, fmt.Errorf("falha ao atualizar status para processing: %w", err)
-	}
 	log.Printf("processing: job=%s status=processing", jobID)
 
 	s.report(ctx, jobID, 5, "iniciando processamento")

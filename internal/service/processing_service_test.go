@@ -72,7 +72,7 @@ func newProcessingTestDB(t *testing.T) *sql.DB {
 	return conn
 }
 
-func seedJob(t *testing.T, conn *sql.DB, jobID string, inputPath string) {
+func seedJobWithStatus(t *testing.T, conn *sql.DB, jobID string, inputPath string, status string) {
 	t.Helper()
 
 	_ = os.MkdirAll(filepath.Dir(inputPath), 0o755)
@@ -82,13 +82,18 @@ func seedJob(t *testing.T, conn *sql.DB, jobID string, inputPath string) {
 
 	err := db.InsertJob(conn, db.Job{
 		ID:        jobID,
-		Status:    "pending",
+		Status:    status,
 		InputPath: inputPath,
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("insert job: %v", err)
 	}
+}
+
+func seedJob(t *testing.T, conn *sql.DB, jobID string, inputPath string) {
+	t.Helper()
+	seedJobWithStatus(t, conn, jobID, inputPath, "pending")
 }
 
 func TestProcessJobSuccess(t *testing.T) {
@@ -182,5 +187,55 @@ func TestProcessJobFailsWhenThumbnailFails(t *testing.T) {
 	}
 	if stored.Status != "failed" {
 		t.Fatalf("expected failed, got %s", stored.Status)
+	}
+}
+
+func TestProcessJobSkipsWhenAlreadyProcessing(t *testing.T) {
+	conn := newProcessingTestDB(t)
+	baseDir := t.TempDir()
+
+	jobID := "job-4"
+	inputPath := filepath.Join(t.TempDir(), "input.mp4")
+	seedJobWithStatus(t, conn, jobID, inputPath, "processing")
+
+	hls := &fakeHLS{}
+	thumb := &fakeThumb{}
+	svc := NewProcessingService(conn, baseDir, hls, thumb)
+
+	_, err := svc.ProcessJob(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	if hls.called {
+		t.Fatal("hls should not run when job is already processing")
+	}
+	if thumb.called {
+		t.Fatal("thumbnail should not run when job is already processing")
+	}
+}
+
+func TestProcessJobSkipsWhenAlreadyCompleted(t *testing.T) {
+	conn := newProcessingTestDB(t)
+	baseDir := t.TempDir()
+
+	jobID := "job-5"
+	inputPath := filepath.Join(t.TempDir(), "input.mp4")
+	seedJobWithStatus(t, conn, jobID, inputPath, "completed")
+
+	hls := &fakeHLS{}
+	thumb := &fakeThumb{}
+	svc := NewProcessingService(conn, baseDir, hls, thumb)
+
+	_, err := svc.ProcessJob(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	if hls.called {
+		t.Fatal("hls should not run when job is already completed")
+	}
+	if thumb.called {
+		t.Fatal("thumbnail should not run when job is already completed")
 	}
 }

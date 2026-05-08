@@ -46,6 +46,40 @@ func UpdateJobStatus(conn *sql.DB, id, status string) error {
 	return err
 }
 
+// TryMarkJobProcessing faz transição atômica para processing apenas quando o job
+// estiver em pending ou failed. Retorna acquired=false quando outro worker já
+// está processando ou quando o job já foi concluído.
+func TryMarkJobProcessing(conn *sql.DB, id string) (acquired bool, currentStatus string, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := conn.ExecContext(ctx,
+		`UPDATE jobs
+		 SET status = $1, updated_at = $2
+		 WHERE id = $3 AND status IN ($4, $5)`,
+		"processing", time.Now(), id, "pending", "failed",
+	)
+	if err != nil {
+		return false, "", err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, "", err
+	}
+
+	if rows > 0 {
+		return true, "processing", nil
+	}
+
+	job, err := GetJobByID(ctx, conn, id)
+	if err != nil {
+		return false, "", err
+	}
+
+	return false, job.Status, nil
+}
+
 func UpdateJobOutputDir(conn *sql.DB, id, outputDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
