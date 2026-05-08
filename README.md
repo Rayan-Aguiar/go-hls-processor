@@ -112,6 +112,28 @@ go run ./cmd/worker
 go test ./... -count=1
 ```
 
+### Rodar teste de carga (responsividade do servidor)
+Use um video real para que o worker faca processamento de verdade durante a carga.
+
+Exemplo:
+```bash
+go run ./cmd/loadtest \
+  -base-url http://localhost:8000 \
+  -file /caminho/para/video.mp4 \
+  -uploads 120 \
+  -concurrency 16 \
+  -probe-every 500ms \
+  -settle-after 60s \
+  -max-p95 400ms \
+  -max-error-rate 0.02
+```
+
+O comando faz:
+- carga concorrente em `POST /jobs/upload`
+- probes continuos em `GET /health` e `GET /videos`
+- calculo de p50/p95/p99 e taxa de erro
+- resultado final `PASS`/`FAIL` com base nos criterios configurados
+
 ## `dev.sh` (melhorias recentes)
 - Sobe server e worker juntos.
 - Prefixa logs por processo:
@@ -158,7 +180,7 @@ Mate o PID e suba novamente `./dev.sh`.
 
 ### Job fica em `pending`
 - Verifique se worker esta rodando.
-- Com o recovery atual, jobs orfaos em `pending` sao reenfileirados automaticamente (janela curta).
+- Com o recovery atual, jobs orfaos em `pending` sao reenfileirados automaticamente quando a fila principal estiver vazia (evita duplicacao sob backlog alto).
 
 ### Barra de progresso para antes do fim
 - SSE agora possui reconexao automatica no cliente.
@@ -167,6 +189,11 @@ Mate o PID e suba novamente `./dev.sh`.
 ### Nao consigo trocar qualidade no player
 - O frontend prioriza hls.js para permitir troca manual.
 - Se cair no modo nativo, o seletor pode ficar indisponivel dependendo do navegador.
+
+### Como validar "servidor responsivo sob carga"
+- Suba o ambiente completo com `./dev.sh`.
+- Rode `go run ./cmd/loadtest ...` com arquivo de video real.
+- Considere aprovado quando o teste terminar com `PASS` (p95 e error_rate dentro dos limites definidos).
 
 ## Proximos passos sugeridos
 - Observabilidade (metricas de fila, retries, tempos de processamento).

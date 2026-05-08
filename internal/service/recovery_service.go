@@ -56,11 +56,25 @@ func (s *RecoveryService) Recover(ctx context.Context) (int, error) {
         return 0, fmt.Errorf("listar jobs presos processing: %w", err)
     }
 
-    pendingIDs, err := db.ListStuckPendingJobs(sqlConn, pendingCutoff, s.batchSize)
-    _ = sqlConn.Close()
+    queueLen, err := s.adapter.Len(ctx, s.queueName)
     if err != nil {
-        return 0, fmt.Errorf("listar jobs presos pending: %w", err)
+        _ = sqlConn.Close()
+        return 0, fmt.Errorf("obter tamanho da fila principal: %w", err)
     }
+
+    pendingIDs := make([]string, 0)
+    // Evita reenfileiramento repetido de jobs pending em cenários de backlog alto.
+    // Só tenta recuperar pending quando a fila principal está vazia, que é quando
+    // faz mais sentido suspeitar de orfandade.
+    if queueLen == 0 {
+        pendingIDs, err = db.ListStuckPendingJobs(sqlConn, pendingCutoff, s.batchSize)
+        if err != nil {
+            _ = sqlConn.Close()
+            return 0, fmt.Errorf("listar jobs presos pending: %w", err)
+        }
+    }
+
+    _ = sqlConn.Close()
 
     recovered := 0
 

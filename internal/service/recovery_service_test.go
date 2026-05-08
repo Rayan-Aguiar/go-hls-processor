@@ -13,7 +13,8 @@ import (
 )
 
 type fakeQueueAdapter struct {
-	enqueued []queue.JobMessage
+	enqueued  []queue.JobMessage
+	queueLens map[string]int64
 }
 
 func (f *fakeQueueAdapter) Enqueue(_ context.Context, _ string, msg queue.JobMessage) error {
@@ -25,8 +26,11 @@ func (f *fakeQueueAdapter) DequeueBlocking(_ context.Context, _ string, _ int) (
 	return nil, nil
 }
 
-func (f *fakeQueueAdapter) Len(_ context.Context, _ string) (int64, error) {
-	return 0, nil
+func (f *fakeQueueAdapter) Len(_ context.Context, queueName string) (int64, error) {
+	if f.queueLens == nil {
+		return 0, nil
+	}
+	return f.queueLens[queueName], nil
 }
 
 func (f *fakeQueueAdapter) EnqueueWithDelay(_ context.Context, _ string, _ queue.JobMessage, _ time.Duration) error {
@@ -127,6 +131,27 @@ func TestRecoveryServiceRecover_DoesNotRequeueFreshPendingJobs(t *testing.T) {
 	insertJobForRecovery(t, conn, "job-pending-fresh", "pending", now, now)
 
 	adapter := &fakeQueueAdapter{}
+	svc := NewRecoveryService(conn, adapter, "video:jobs", 2*time.Minute, 100)
+
+	recovered, err := svc.Recover(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if recovered != 0 {
+		t.Fatalf("expected recovered=0, got %d", recovered)
+	}
+	if len(adapter.enqueued) != 0 {
+		t.Fatalf("expected no enqueued messages, got %d", len(adapter.enqueued))
+	}
+}
+
+func TestRecoveryServiceRecover_DoesNotRequeuePendingWhenQueueHasBacklog(t *testing.T) {
+	conn := newRecoveryTestDB(t)
+
+	oldTime := time.Now().Add(-10 * time.Minute)
+	insertJobForRecovery(t, conn, "job-pending-backlog", "pending", oldTime, oldTime)
+
+	adapter := &fakeQueueAdapter{queueLens: map[string]int64{"video:jobs": 50}}
 	svc := NewRecoveryService(conn, adapter, "video:jobs", 2*time.Minute, 100)
 
 	recovered, err := svc.Recover(context.Background())

@@ -42,20 +42,22 @@
      - [x] Fase 5 - Retry com backoff + limite de tentativas + dead-letter.
      - [x] Fase 6 - Recuperação de jobs presos em processing (reaper).
    - Regras de capacidade (inicial):
-     - [ ] pool size inicial: max(2, min(6, CPU/2)).
-     - [ ] buffer interno: 2x ou 3x o tamanho do pool.
-     - [ ] timeout por job de processamento.
-     - [ ] sem ffmpeg rodando na thread da API.
+     - [x] pool size inicial: max(2, min(6, CPU/2)).
+     - [x] buffer interno: 2x ou 3x o tamanho do pool.
+     - [x] timeout por job de processamento.
+     - [x] sem ffmpeg rodando na thread da API.
    - Metas de robustez para volume (200 a 1000 jobs):
      - [x] backlog fica na fila (não em memória da API).
-     - [ ] servidor continua responsivo sob carga.
+     - [x] servidor continua responsivo sob carga.
      - [x] jobs falhos não travam fila inteira.
      - [x] reinício da aplicação não perde job pendente.
+     - Evidência (2026-05-08): `cmd/loadtest` com 100 uploads concorrentes (`concurrency=16`) resultou em `PASS`.
+       - Probes `GET /health` + `GET /videos`: error_rate=0.00%, p95=15.09ms, p99=41.31ms, max=87.86ms.
 
-8. [ ] Testes e scripts locais
+8. [x] Testes e scripts locais
   - Testes unitários e scripts para rodar `ffmpeg` localmente (ou container).
   - Critério: pipeline de testes básicos passando localmente.
-  - Status atual: testes unitários implementados e passando (`go test ./... -v`); falta definir script operacional para execução local de processamento com ffmpeg (ou alternativa via container).
+  - Status atual: testes unitários implementados e passando (`go test ./... -count=1`) e fluxo operacional local consolidado com `./dev.sh` + scripts de apoio para infraestrutura.
   - Escopo adicional alinhado para fila:
      - [x] testes unitários do queue adapter (Redis).
      - [x] testes de integração do queue adapter (Redis, build tag integration).
@@ -72,7 +74,7 @@
      - [ ] playbook de troubleshooting (fila parada, jobs stuck, saturação).
      - [ ] estratégia de observabilidade (logs e métricas básicas de fila/worker).
 
-10. [ ] Redis e arquitetura de fila (estudo guiado)
+10. [x] Redis e arquitetura de fila (estudo guiado)
   - Objetivo: aprender gerenciamento de filas com Redis mantendo consistência com SQLite.
   - Tópicos:
      - [x] escolha da abordagem inicial (Redis List) e evolução futura (Redis Streams).
@@ -131,7 +133,9 @@ Notas:
    - Entregas:
     - [x] query de jobs `pending` antigos no repositório.
     - [x] recovery reenfileira `pending` órfão e atualiza `updated_at`.
+  - [x] proteção anti-reenfileiramento repetido de `pending` durante backlog alto (skip de recovery de pending quando fila principal já possui itens).
     - [x] testes cobrindo pending stale e pending fresh.
+  - [x] teste cobrindo cenário de backlog para garantir ausência de reenfileiramento duplicado.
     - [x] sweep de recovery ajustado para intervalo mais curto no dev (`RECOVERY_SWEEP_INTERVAL_SECONDS=5`).
 
 16. [x] Idempotência do processamento por `job_id`

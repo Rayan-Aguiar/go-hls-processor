@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -60,12 +61,29 @@ func main() {
 		thumbGenerator,
 	).WithProgress(progress.NewPublisher(redisAdapter.Client()))
 
+	defaultWorkers := defaultWorkerPoolSize()
+	workerCount := envIntOrDefault("WORKER_POOL_SIZE", defaultWorkers)
+	if workerCount <= 0 {
+		workerCount = defaultWorkers
+	}
+
+	defaultBuffer := workerCount * 3
+	bufferSize := envIntOrDefault("WORKER_BUFFER_SIZE", defaultBuffer)
+	if bufferSize <= 0 {
+		bufferSize = defaultBuffer
+	}
+
+	jobTimeoutMinutes := envIntOrDefault("WORKER_TIMEOUT_MINUTES", 30)
+	if jobTimeoutMinutes <= 0 {
+		jobTimeoutMinutes = 30
+	}
+
 	cfg := worker.Config{
 		QueueName:             envOrDefault("QUEUE_NAME", "video:jobs"),
-		WorkerCount:           envIntOrDefault("WORKER_POOL_SIZE", 4),
+		WorkerCount:           workerCount,
 		DequeueTimeoutSeconds: envIntOrDefault("QUEUE_DEQUEUE_TIMEOUT_SECONDS", 2),
-		JobTimeout:            time.Duration(envIntOrDefault("WORKER_TIMEOUT_MINUTES", 30)) * time.Minute,
-		BufferSize:            envIntOrDefault("WORKER_BUFFER_SIZE", 8),
+		JobTimeout:            time.Duration(jobTimeoutMinutes) * time.Minute,
+		BufferSize:            bufferSize,
 
 		MaxRetries:         envIntOrDefault("MAX_RETRIES", 3),
 		RetryBackoffBase:   time.Duration(envIntOrDefault("RETRY_BACKOFF_SECONDS", 5)) * time.Second,
@@ -120,4 +138,15 @@ func envIntOrDefault(key string, fallback int) int {
 	}
 
 	return v
+}
+
+func defaultWorkerPoolSize() int {
+	cpuHalf := runtime.NumCPU() / 2
+	if cpuHalf < 2 {
+		return 2
+	}
+	if cpuHalf > 6 {
+		return 6
+	}
+	return cpuHalf
 }
