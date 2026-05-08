@@ -85,7 +85,6 @@ func (r *RedisAdapter) DequeueBlocking(ctx context.Context, queueName string, ti
 		return nil, apperrors.New(apperrors.ErrQueueDequeue, "queue.redis.dequeue", err)
 	}
 
-	// BLPOP retorna [queueName, payload]
 	if len(result) < 2 {
 		return nil, apperrors.New(apperrors.ErrQueueDecode, "queue.redis.dequeue", fmt.Errorf("invalid BLPOP response"))
 	}
@@ -108,6 +107,75 @@ func (r *RedisAdapter) Len(ctx context.Context, queueName string) (int64, error)
 		return 0, apperrors.New(apperrors.ErrQueueLen, "queue.redis.len", err)
 	}
 	return n, nil
+}
+
+// Enfileira no ZSET de retry com score = now + delay.
+func (r *RedisAdapter) EnqueueWithDelay(ctx context.Context, retryQueue string, msg JobMessage, delay time.Duration) error {
+	if retryQueue == "" {
+		return apperrors.New(apperrors.ErrInvalidQueueName, "queue.redis.enqueue_with_delay", nil)
+	}
+	if delay < 0 {
+		delay = 0
+	}
+
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return apperrors.New(apperrors.ErrQueueEncode, "queue.redis.enqueue_with_delay", err)
+	}
+
+	score := float64(time.Now().Add(delay).UnixMilli())
+	if err := r.client.ZAdd(ctx, retryQueue, redis.Z{
+		Score:  score,
+		Member: string(payload),
+	}).Err(); err != nil {
+		return apperrors.New(apperrors.ErrQueueEnqueue, "queue.redis.enqueue_with_delay", err)
+	}
+
+	return nil
+}
+
+// Move itens vencidos do ZSET de retry para a fila principal.
+func (r *RedisAdapter) RequeueDue(ctx context.Context, retryQueue, targetQueue string, maxItems int64) (int64, error) {
+	if retryQueue == "" || targetQueue == "" {
+		return 0, apperrors.New(apperrors.ErrInvalidQueueName, "queue.redis.requeue_due", nil)
+	}
+	if maxItems <= 0 {
+		maxItems = 100
+	}
+
+	script := redis.NewScript(`
+		local retryKey = KEYS[1]
+		local targetKey = KEYS[2]
+		local now = tonumber(ARGV[1])
+		local limit = tonumber(ARGV[2])
+
+		local items = redis.call("ZRANGEBYSCORE", retryKey, "-inf", now, "LIMIT", 0, limit)
+		if #items == 0 then
+		return 0
+		end
+
+		for i, member in ipairs(items) do
+		redis.call("ZREM", retryKey, member)
+		redis.call("RPUSH", targetKey, member)
+		end
+
+		return #items
+	`)
+
+	nowMs := time.Now().UnixMilli()
+	result, err := script.Run(ctx, r.client, []string{retryQueue, targetQueue}, nowMs, maxItems).Result()
+	if err != nil {
+		return 0, apperrors.New(apperrors.ErrQueueDequeue, "queue.redis.requeue_due", err)
+	}
+
+	switch v := result.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, apperrors.New(apperrors.ErrQueueDecode, "queue.redis.requeue_due", fmt.Errorf("unexpected script return type %T", result))
+	}
 }
 
 func (r *RedisAdapter) Close() error {

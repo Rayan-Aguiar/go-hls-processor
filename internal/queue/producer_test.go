@@ -120,3 +120,11 @@ func TestProducerPublishJobSuccess(t *testing.T) {
 		t.Fatalf("unexpected EnqueuedAt value: %s", gotMessage.EnqueuedAt)
 	}
 }
+
+func (m *mockAdapter) EnqueueWithDelay(_ context.Context, _ string, _ JobMessage, _ time.Duration) error {
+    return nil
+}
+
+func (m *mockAdapter) RequeueDue(_ context.Context, _ string, _ string, _ int64) (int64, error) {
+    return 0, nil
+}
