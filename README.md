@@ -1,168 +1,164 @@
-# Go HLS Processor (estudo em Go)
+# Video Processor
 
-## Objetivo
-Projeto de estudo focado em backend com Go para pipeline de video:
-- upload de arquivo
-- enfileiramento assincrono
-- processamento FFmpeg (HLS multiqualidade)
-- geracao de thumbnail
-- status e artefatos servidos por API HTTP
-- dashboard web para acompanhar processamento e assistir videos
+> Pipeline de video em Go com HLS adaptativo, processamento assincrono e observabilidade completa de ponta a ponta.
 
-## Estado atual (implementado)
-- Upload multipart com validacao e persistencia de job no PostgreSQL.
-- Fila Redis com produtor e consumidor desacoplados por interface.
-- Worker pool com concorrencia configuravel.
-- Retry com backoff exponencial + dead-letter queue.
-- Recovery loop para jobs presos em `processing` e tambem jobs orfaos em `pending`.
-- Conversao HLS em 4 qualidades: 360p, 480p, 720p, 1080p.
-- Geracao de thumbnail JPG por job.
-- Progresso em tempo real via SSE + Redis Pub/Sub.
-- Dashboard web com upload, listagem, progresso e player HLS com seletor de qualidade.
-- Script de desenvolvimento unico (`./dev.sh`) subindo server + worker com logs prefixados.
-- Stack de observabilidade com Prometheus + Grafana + exporters de PostgreSQL/Redis.
-- Dashboards provisionados automaticamente para fila, jobs, API e worker.
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-Queue%20%26%20Pub%2FSub-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-HLS%20Pipeline-000000?logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
 
-## Arquitetura resumida
-- PostgreSQL: fonte da verdade dos jobs (status, paths, timestamps).
-- Redis:
-  - fila principal (`LIST`)
-  - fila de retry com atraso (`ZSET`)
-  - dead-letter queue (`LIST`)
-  - pub/sub de progresso (`video:progress:{jobID}`)
-- Worker:
-  - dispatcher bloqueante
-  - pool concorrente
-  - timeout por job
-  - retry e recovery
-- HTTP Server:
-  - upload, status, listagem e streaming de assets HLS
-  - endpoint SSE por job
-  - dashboard web
+## Visao Geral
 
-## Fluxo ponta a ponta
-1. Cliente envia arquivo em `POST /jobs/upload`.
-2. API valida arquivo, salva em disco, cria job `pending` no PostgreSQL e publica na fila Redis.
-3. Worker consome a fila, muda status para `processing` e roda FFmpeg por qualidade.
-4. Worker publica progresso (5, 20, 40, 60, 80, 90, 100).
-5. Frontend recebe via SSE (`/jobs/{id}/events`) e atualiza barra/etapa em tempo real.
-6. Ao concluir, status vira `completed`, thumbnail e playlists ficam disponiveis.
+Video Processor foi desenhado para transformar uploads de video em uma experiencia pronta para consumo: o arquivo entra por uma API HTTP, e em seguida segue para uma fila assincrona, onde um worker processa o material com FFmpeg, gera HLS em multiplas qualidades, cria thumbnail e disponibiliza todos os artefatos para reproducao imediata.
 
-## Endpoints HTTP
-- `GET /`
-  - Dashboard web.
-- `GET /health`
-  - Healthcheck basico.
-- `POST /jobs/upload`
-  - Upload multipart (`file`).
-- `GET /jobs/{id}`
-  - Status de um job.
-- `GET /jobs/{id}/events`
-  - SSE de progresso do job.
-- `GET /videos?limit=200`
-  - Lista jobs/videos.
-- `GET /videos/{id}/{asset...}`
-  - Serve `master.m3u8`, playlists por qualidade, `.ts` e `thumbnail.jpg`.
-- `GET /metrics`
-  - Metrica Prometheus da API.
+O valor central do projeto e entregar um fluxo completo e confiavel para processamento de midia, com separacao clara entre API, fila, worker e camada de observabilidade. O resultado e uma base tecnica robusta, preparada para crescimento, monitoramento e evolucao sem acoplamento desnecessario.
 
-## Documentação da API
+## Preview
 
-### Swagger UI
-- Acesso: `http://localhost:8000/swagger`
-- Arquivo JSON bruto: `http://localhost:8000/swagger.json`
-- Documentação interativa de todos os endpoints com parâmetros, respostas e exemplos
+> Pipeline de upload, processamento e playback com atualizacao em tempo real do progresso.
 
-## Observabilidade
-### Componentes
-- Prometheus (`http://localhost:9090`)
-- Grafana (`http://localhost:3000`)
-- PostgreSQL Exporter (`http://localhost:9187/metrics`)
-- Redis Exporter (`http://localhost:9121/metrics`)
+## Principais Funcionalidades
 
-### Endpoints de metricas da aplicacao
-- API: `http://localhost:8000/metrics`
-- Worker: `http://localhost:9101/metrics`
+- Upload multipart com validacao e persistencia imediata do job no banco, reduzindo o tempo entre a acao do usuario e o inicio do processamento.
+- Fila assincrona em Redis com produtor e consumidor desacoplados, permitindo absorver picos de demanda sem travar a experiencia da API.
+- Worker pool com concorrencia configuravel, timeout por job e controle de buffer para manter previsibilidade operacional.
+- Retry com backoff exponencial e dead-letter queue, oferecendo resiliencia diante de falhas temporarias no processamento.
+- Recovery automatizado para jobs presos em processing e para casos de pending orfao, reduzindo operacao manual e evitando backlog estagnado.
+- Conversao HLS em multiplas qualidades, com playlists e segmentos prontos para playback adaptativo.
+- Geracao automatica de thumbnail por job, melhorando a navegacao visual na lista de videos.
+- Atualizacao em tempo real via SSE e Redis Pub/Sub, eliminando polling fixo e deixando a interface mais fluida.
+- Dashboard web para acompanhar status, progresso e playback em uma unica tela.
+- Swagger UI e arquivo OpenAPI para exploracao rapida da API e integracao com outros sistemas.
+- Stack de observabilidade com metricas da aplicacao, exporters e dashboards provisionados automaticamente.
 
-### Dashboard
-- Dashboard provisionado: `Video Processor Overview`
-- Caminho no repo: `observability/grafana/dashboards/video-processor-overview.json`
+## Diferenciais Tecnicos
 
-### O que monitorar (prioridade)
-- Backlog e saude da fila:
-  - `videoproc_queue_depth` (main/retry/dead)
-  - `videoproc_recovery_reenqueued_total`
-  - `videoproc_retry_promoted_total`
-- Estado dos jobs:
-  - `videoproc_jobs_total{status=...}` para `pending`, `processing`, `completed`, `failed`
-- Performance do worker:
-  - `videoproc_job_processing_duration_seconds` (p50/p95)
-  - `videoproc_jobs_processed_total{result=...}`
-  - `videoproc_worker_active_jobs`
-  - `videoproc_retry_scheduled_total` e `videoproc_dead_letter_total`
-- Saude da API:
-  - `videoproc_http_request_duration_seconds` (p95)
-  - `videoproc_http_requests_total` (throughput e 5xx)
-- Infra de suporte:
-  - métricas nativas do PostgreSQL exporter
-  - métricas nativas do Redis exporter
+| Area | Implementacao | Impacto |
+| --- | --- | --- |
+| Arquitetura | Separacao entre API, worker, fila e storage em disco | Facilita evolucao, manutencao e escala independente |
+| Processamento | FFmpeg isolado em um pipeline assinc com timeout e retry | Mantem o servidor responsivo mesmo sob carga |
+| Confiabilidade | Recovery loop para jobs stuck e orfaos | Reduz inconsistencias operacionais e perda de trabalho |
+| Fluxo de dados | PostgreSQL como fonte da verdade e Redis como camada de orquestracao | Evita acoplamento e simplifica reprocessamento |
+| Experiencia em tempo real | SSE com reconexao automatica | Feedback imediato sem polling agressivo |
+| Observabilidade | Prometheus, Grafana e exporters para Postgres e Redis | Diagnostico rapido de gargalos e regressao de performance |
+| Operacao local | `dev.sh` sobe server e worker juntos com logs prefixados | Desenvolvimento mais previsivel e ergonomico |
+| Qualidade de API | Endpoints documentados e contratos bem definidos | Integracao mais simples para clientes e colaboradores |
+| Frontend | Dashboard leve, responsivo e com fallback de playback | Boa experiencia mesmo em navegadores com suporte variavel |
 
-## Frontend dashboard
-Arquivo: `web/index.html`
+## Stack Utilizada
 
-Funcionalidades:
-- Upload de video.
-- Lista de videos com status (`pending`, `processing`, `completed`, `failed`).
-- Barra de progresso e descricao de etapa.
-- Atualizacao por SSE (sem polling fixo).
-- Player com hls.js priorizado para troca manual de qualidade.
-- Fallback para HLS nativo quando hls.js nao estiver disponivel.
-- Reconexao automatica de SSE em queda transitora.
+| Camada | Tecnologias |
+| --- | --- |
+| Linguagem | Go 1.26 |
+| API HTTP | `net/http`, SSE, middleware de metrics |
+| Banco de dados | PostgreSQL via `pgx/v5` e `database/sql` |
+| Fila e eventos | Redis + `go-redis/v9` |
+| Midia | FFmpeg, HLS, geracao de thumbnail |
+| Observabilidade | Prometheus, Grafana, PostgreSQL Exporter, Redis Exporter |
+| Frontend | HTML, CSS, JavaScript e `hls.js` no dashboard |
+| Ferramentas | Docker Compose, Air, Swagger UI, load test CLI |
 
-## Execucao local
+## Como Rodar Localmente
+
 ### Pre-requisitos
-- Go 1.26+
-- Docker + Docker Compose
-- FFmpeg instalado na maquina
-- Air instalado (`go install github.com/air-verse/air@latest`)
 
-### Subir infraestrutura
+- Go 1.26+
+- Docker e Docker Compose
+- FFmpeg instalado no sistema
+- Air instalado para o fluxo de desenvolvimento com reload automatico
+
+Instale o Air, se necessario:
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+### 1. Configure o ambiente
+
+Copie o arquivo de exemplo e ajuste os valores conforme sua maquina:
+
+```bash
+cp .env.example .env
+```
+
+Campos importantes que o servidor e o worker realmente consomem:
+
+```env
+DATABASE_URL=postgres://videoproc:videoproc@localhost:5432/video_processor?sslmode=disable
+DATA_DIR=./data
+MIGRATIONS_DIR=./migrations
+PORT=8000
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=videoproc2024
+REDIS_DB=0
+
+QUEUE_NAME=video:jobs
+RETRY_QUEUE=video:jobs:retry
+DEAD_LETTER_QUEUE=video:jobs:dead
+WORKER_POOL_SIZE=4
+WORKER_TIMEOUT_MINUTES=30
+MAX_RETRIES=3
+RETRY_BACKOFF_SECONDS=5
+RETRY_BACKOFF_MAX_SECONDS=300
+RETRY_SWEEP_INTERVAL_SECONDS=1
+RECOVERY_SWEEP_INTERVAL_SECONDS=5
+RECOVERY_STUCK_AFTER_SECONDS=120
+RECOVERY_BATCH_SIZE=100
+
+WORKER_METRICS_PORT=9101
+METRICS_SAMPLE_INTERVAL_SECONDS=5
+```
+
+### 2. Suba a infraestrutura
+
 ```bash
 docker compose up -d
 ```
 
-Isso sobe PostgreSQL, Redis, Prometheus, Grafana e exporters.
+Esse comando sobe PostgreSQL, Redis, Prometheus, Grafana e os exporters de suporte.
 
-### Aplicar migrations
+### 3. Rode as migrations
+
 ```bash
 go run ./cmd/migrate
 ```
 
-### Subir server + worker juntos (recomendado)
+### 4. Inicie a aplicacao
+
+Recomendado para desenvolvimento:
+
 ```bash
 ./dev.sh
 ```
 
-### Alternativa (manual)
-Terminal 1:
+Isso inicia server e worker juntos, com logs prefixados e encerramento coordenado.
+
+Se preferir executar manualmente:
+
 ```bash
 go run ./cmd/server
 ```
 
-Terminal 2:
+Em outro terminal:
+
 ```bash
 go run ./cmd/worker
 ```
 
-### Rodar testes
+### 5. Valide o sistema
+
+Teste a API e os fluxos principais:
+
 ```bash
 go test ./... -count=1
 ```
 
-### Rodar teste de carga (responsividade do servidor)
-Use um video real para que o worker faca processamento de verdade durante a carga.
+Execute o load test com um video real para medir responsividade sob processamento de verdade:
 
-Exemplo:
 ```bash
 go run ./cmd/loadtest \
   -base-url http://localhost:8000 \
@@ -175,97 +171,113 @@ go run ./cmd/loadtest \
   -max-error-rate 0.02
 ```
 
-O comando faz:
-- carga concorrente em `POST /jobs/upload`
-- probes continuos em `GET /health` e `GET /videos`
-- calculo de p50/p95/p99 e taxa de erro
-- resultado final `PASS`/`FAIL` com base nos criterios configurados
+### Acesso rapido
 
-## `dev.sh` (melhorias recentes)
-- Sobe server e worker juntos.
-- Prefixa logs por processo:
-  - `[server]`
-  - `[worker]`
-- Falha rapida se a porta 8000 estiver ocupada.
-- Encerra os dois processos juntos ao sair.
-- Se um processo cair, o script encerra o outro e finaliza.
+- Aplicacao: `http://localhost:8000`
+- Swagger UI: `http://localhost:8000/swagger`
+- OpenAPI JSON: `http://localhost:8000/swagger.json`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000`
+- Metrics da API: `http://localhost:8000/metrics`
+- Metrics do worker: `http://localhost:9101/metrics`
 
-## Variaveis de ambiente importantes
-Arquivo base: `.env`
+### Problemas comuns
 
-- API:
-  - `PORT`
-  - `DATA_DIR`
-  - `DATABASE_URL`
-- Redis:
-  - `REDIS_HOST`
-  - `REDIS_PORT`
-  - `REDIS_PASSWORD`
-  - `REDIS_DB`
-- Fila/worker:
-  - `QUEUE_NAME`
-  - `WORKER_POOL_SIZE`
-  - `WORKER_TIMEOUT_MINUTES`
-  - `MAX_RETRIES`
-  - `RETRY_BACKOFF_SECONDS`
-  - `RETRY_BACKOFF_MAX_SECONDS`
-  - `RETRY_QUEUE`
-  - `DEAD_LETTER_QUEUE`
-  - `RETRY_SWEEP_INTERVAL_SECONDS`
-- Recovery:
-  - `RECOVERY_SWEEP_INTERVAL_SECONDS` (atual: 5)
-  - `RECOVERY_STUCK_AFTER_SECONDS`
-  - `RECOVERY_BATCH_SIZE`
-- Observabilidade:
-  - `WORKER_METRICS_PORT`
-  - `METRICS_SAMPLE_INTERVAL_SECONDS`
-  - `PROMETHEUS_PORT`
-  - `GRAFANA_PORT`
-  - `POSTGRES_EXPORTER_PORT`
-  - `REDIS_EXPORTER_PORT`
+- Porta 8000 ocupada: verifique com `ss -ltnp '( sport = :8000 )'` e pare o processo conflitante antes de rodar `./dev.sh`.
+- Worker nao processa jobs: confirme se o `ffmpeg` esta instalado e se o worker esta ativo no terminal separado ou no `./dev.sh`.
+- Interface nao atualiza progresso: verifique se a conexao SSE para `/jobs/{id}/events` nao foi bloqueada por proxy, extensao ou politica de rede.
+- Grafana ou Prometheus nao sobem: confirme se o Docker Compose concluiu o bootstrap e se as portas locais nao estao em uso.
 
-## Troubleshooting rapido
-### `erro: porta 8000 ja esta em uso`
-Use:
-```bash
-ss -ltnp '( sport = :8000 )'
+## Estrutura do Projeto
+
+```text
+.
+├── cmd/
+│   ├── server/       # API HTTP, dashboard, SSE, Swagger e assets de video
+│   ├── worker/       # Consumidor de fila, pool de processamento e metrics
+│   ├── migrate/      # Aplicacao de migrations do banco
+│   └── loadtest/     # Simulacao de carga e prova de responsividade
+├── internal/
+│   ├── db/           # Conexao, repositorios e consultas
+│   ├── ffmpeg/       # Runner, HLS e thumbnail
+│   ├── handler/      # Handlers HTTP
+│   ├── models/       # Modelos e estados de dominio
+│   ├── observability/# Metricas e instrumentacao
+│   ├── progress/     # Pub/Sub e SSE de progresso
+│   ├── queue/        # Adaptadores Redis, producer e mensagens
+│   ├── service/      # Regras de negocio e orquestracao
+│   ├── validator/    # Validacoes de upload e video
+│   └── worker/       # Pool concorrente e lifecycle
+├── migrations/       # Schema e evolucao do banco
+├── observability/    # Prometheus, Grafana e provisioning
+├── web/              # Dashboard HTML/CSS/JS
+├── data/             # Artefatos gerados por job
+├── docs/             # Swagger JSON e documentacao da API
+└── scripts/          # Utilitarios e automacoes auxiliares
 ```
-Mate o PID e suba novamente `./dev.sh`.
 
-### Job fica em `pending`
-- Verifique se worker esta rodando.
-- Com o recovery atual, jobs orfaos em `pending` sao reenfileirados automaticamente quando a fila principal estiver vazia (evita duplicacao sob backlog alto).
+## API e Fluxos
 
-### Barra de progresso para antes do fim
-- SSE agora possui reconexao automatica no cliente.
-- O servidor envia `retry` para reconexao rapida.
+### Endpoints Principais
 
-### Nao consigo trocar qualidade no player
-- O frontend prioriza hls.js para permitir troca manual.
-- Se cair no modo nativo, o seletor pode ficar indisponivel dependendo do navegador.
+| Metodo | Rota | Finalidade |
+| --- | --- | --- |
+| `GET` | `/` | Dashboard web |
+| `GET` | `/health` | Healthcheck da API |
+| `GET` | `/jobs/ping-db` | Valida conexao com o banco |
+| `POST` | `/jobs/upload` | Upload multipart do video |
+| `GET` | `/jobs/{id}` | Detalhe e status do job |
+| `GET` | `/jobs/{id}/events` | Stream SSE de progresso |
+| `GET` | `/videos` | Lista de jobs/videos |
+| `GET` | `/videos/{id}/{asset...}` | Serve playlists, segmentos e thumbnail |
+| `GET` | `/metrics` | Metrics da API para Prometheus |
+| `GET` | `/swagger` | Swagger UI |
+| `GET` | `/swagger.json` | Especificacao OpenAPI |
 
-### Como validar "servidor responsivo sob carga"
-- Suba o ambiente completo com `./dev.sh`.
-- Rode `go run ./cmd/loadtest ...` com arquivo de video real.
-- Considere aprovado quando o teste terminar com `PASS` (p95 e error_rate dentro dos limites definidos).
+### Fluxo de Execucao
 
-### Playbook de troubleshooting (fila parada, jobs stuck, saturacao)
-- Fila parada (`pending` cresce e `processing` nao sobe):
-  - Verifique painel `Profundidade das Filas Redis` no Grafana.
-  - Se `videoproc_queue_depth{queue="video:jobs"}` sobe continuamente e `videoproc_worker_active_jobs` fica em zero, confirme worker ativo e endpoint `http://localhost:9101/metrics`.
-- Jobs stuck em `processing`:
-  - Observe `videoproc_jobs_total{status="processing"}` sem queda por janela longa.
-  - Verifique aumento em `videoproc_recovery_reenqueued_total` e `videoproc_recovery_runs_total` para validar atuação do recovery.
-- Saturacao do worker:
-  - `videoproc_worker_active_jobs` constante no teto e p95 de `videoproc_job_processing_duration_seconds` crescente.
-  - Acoes: reduzir concorrencia de upload, aumentar `WORKER_POOL_SIZE` com cautela e acompanhar latencia da API.
-- Saturacao da API:
-  - p95 de `videoproc_http_request_duration_seconds` sobe e taxa 5xx aumenta.
-  - Acoes: checar recursos de host, backlog da fila e gargalo de banco/redis via exporters.
+```mermaid
+flowchart LR
+    A[POST /jobs/upload] --> B[Validacao e persistencia]
+    B --> C[(PostgreSQL: job pending)]
+    B --> D[(Redis: fila principal)]
+    D --> E[Worker pool]
+    E --> F[FFmpeg: HLS multiqualidade]
+    E --> G[Thumbnail JPG]
+    E --> H[Eventos de progresso via Redis Pub/Sub]
+    H --> I[GET /jobs/{id}/events SSE]
+    F --> J[GET /videos/{id}/{asset...}]
+    G --> J
+    E --> K[(Dead-letter queue / Retry queue)]
+```
 
-## Proximos passos sugeridos
-- Observabilidade (metricas de fila, retries, tempos de processamento).
-- Endpoint/admin para visualizar DLQ e reenfileirar manualmente.
-- Testes de integracao end-to-end do fluxo upload -> completed.
-- Limpeza/retencao de artefatos antigos no `data/`.
-- Hardening (auth, limites por usuario, rate limit, quotas).
+### O que esse fluxo entrega
+
+- Entrada simples por upload multipart.
+- Processamento desacoplado da API, evitando bloqueio da experiencia do usuario.
+- Atualizacao em tempo real do estado do job.
+- Artefatos prontos para playback adaptativo e compartilhamento.
+
+## Experiencia do Usuario
+
+- Interface limpa e objetiva, com foco em status, progresso e consumo rapido do video.
+- Feedback visual imediato para pending, processing, completed e failed.
+- Atualizacao sem polling fixo, o que reduz latencia perceptivel e ruido de rede.
+- Player com suporte a troca de qualidade via hls.js, com fallback quando necessario.
+- Layout responsivo, pensado para telas maiores e para acompanhamento rapido em navegadores comuns.
+
+## Possibilidades Futuras
+
+- Persistencia dos artefatos em storage externo, como S3 ou compatibilidade similar.
+- Upload resumivel para arquivos muito grandes.
+- Autenticacao e controle de acesso por usuario ou workspace.
+- Webhooks para notificar sistemas externos quando o job concluir.
+- Pagina dedicada por video com metadados, historico e insights de processamento.
+- Novos perfis de qualidade e presets customizaveis por tipo de conteudo.
+- Painel operacional com filtros, busca e visao consolidada de filas e falhas.
+
+## Conclusão
+
+Video Processor combina engenharia pragmatica, processamento de midia e observabilidade real em uma mesma base. O projeto entrega uma experiencia completa para upload, transcodificacao, monitoramento e playback, com uma arquitetura preparada para crescer sem perder clareza tecnica.
+
+O resultado e uma plataforma com valor real de produto: responsiva, monitoravel, resiliente e organizada para evoluir com baixo atrito.
