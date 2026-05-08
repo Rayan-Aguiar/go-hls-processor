@@ -8,3 +8,5 @@ redis_data/
 
 # Scripts logs
 scripts/*.log
+
+data/

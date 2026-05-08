@@ -178,6 +178,12 @@ func (r *RedisAdapter) RequeueDue(ctx context.Context, retryQueue, targetQueue s
 	}
 }
 
+// Client expõe o cliente Redis subjacente para uso em outros componentes
+// (ex.: progress pub/sub). Não feche este cliente diretamente; use Close().
+func (r *RedisAdapter) Client() *redis.Client {
+	return r.client
+}
+
 func (r *RedisAdapter) Close() error {
 	if err := r.client.Close(); err != nil {
 		return apperrors.New(apperrors.ErrQueueClose, "queue.redis.close", err)

@@ -66,6 +66,41 @@ func DeleteJob(conn *sql.DB, id string) error {
 	return err
 }
 
+func ListJobs(ctx context.Context, conn *sql.DB, limit int) ([]Job, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	rows, err := conn.QueryContext(queryCtx, `
+		SELECT id, status, input_path, output_dir, created_at, updated_at
+		FROM jobs
+		ORDER BY created_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	jobs := make([]Job, 0, limit)
+	for rows.Next() {
+		var j Job
+		if err := rows.Scan(&j.ID, &j.Status, &j.InputPath, &j.OutputDir, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return jobs, nil
+}
+
 func ListStuckProcessingJobs(conn *sql.Conn, cutoff time.Time, limit int) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -82,6 +117,43 @@ func ListStuckProcessingJobs(conn *sql.Conn, cutoff time.Time, limit int) ([]str
         ORDER BY created_at ASC
         LIMIT $3
     `, "processing", cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
+func ListStuckPendingJobs(conn *sql.Conn, cutoff time.Time, limit int) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := conn.QueryContext(ctx, `
+        SELECT id
+        FROM jobs
+        WHERE status = $1
+          AND COALESCE(updated_at, created_at) < $2
+        ORDER BY created_at ASC
+        LIMIT $3
+    `, "pending", cutoff, limit)
 	if err != nil {
 		return nil, err
 	}

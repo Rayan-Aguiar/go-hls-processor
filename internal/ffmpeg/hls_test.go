@@ -14,7 +14,7 @@ func TestHLSConverterConvert(t *testing.T) {
 	converter := NewHLSConverter(runner)
 	outputDir := t.TempDir()
 
-	output, err := converter.Convert(context.Background(), "input.mp4", outputDir)
+	output, err := converter.Convert(context.Background(), "input.mp4", outputDir, nil)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -66,7 +66,7 @@ func TestHLSConverterConvertPropagatesRunnerError(t *testing.T) {
 	runner := &stubRunner{err: errors.New("runner failed")}
 	converter := NewHLSConverter(runner)
 
-	_, err := converter.Convert(context.Background(), "input.mp4", t.TempDir())
+	_, err := converter.Convert(context.Background(), "input.mp4", t.TempDir(), nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

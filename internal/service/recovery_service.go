@@ -11,11 +11,12 @@ import (
 )
 
 type RecoveryService struct {
-    conn       *sql.DB
-    adapter    queue.Adapter
-    queueName  string
-    stuckAfter time.Duration
-    batchSize  int
+    conn         *sql.DB
+    adapter      queue.Adapter
+    queueName    string
+    stuckAfter   time.Duration
+    pendingAfter time.Duration
+    batchSize    int
 }
 
 func NewRecoveryService(conn *sql.DB, adapter queue.Adapter, queueName string, stuckAfter time.Duration, batchSize int) *RecoveryService {
@@ -25,33 +26,45 @@ func NewRecoveryService(conn *sql.DB, adapter queue.Adapter, queueName string, s
     if batchSize <= 0 {
         batchSize = 100
     }
+    pendingAfter := 15 * time.Second
+    if stuckAfter > 0 && stuckAfter < pendingAfter {
+        pendingAfter = stuckAfter
+    }
 
     return &RecoveryService{
-        conn:       conn,
-        adapter:    adapter,
-        queueName:  queueName,
-        stuckAfter: stuckAfter,
-        batchSize:  batchSize,
+        conn:         conn,
+        adapter:      adapter,
+        queueName:    queueName,
+        stuckAfter:   stuckAfter,
+        pendingAfter: pendingAfter,
+        batchSize:    batchSize,
     }
 }
 
 func (s *RecoveryService) Recover(ctx context.Context) (int, error) {
-    cutoff := time.Now().Add(-s.stuckAfter)
+    processingCutoff := time.Now().Add(-s.stuckAfter)
+    pendingCutoff := time.Now().Add(-s.pendingAfter)
 
     sqlConn, err := s.conn.Conn(ctx)
     if err != nil {
         return 0, fmt.Errorf("obter conexao dedicada para recovery: %w", err)
     }
 
-    ids, err := db.ListStuckProcessingJobs(sqlConn, cutoff, s.batchSize)
+    processingIDs, err := db.ListStuckProcessingJobs(sqlConn, processingCutoff, s.batchSize)
+    if err != nil {
+        _ = sqlConn.Close()
+        return 0, fmt.Errorf("listar jobs presos processing: %w", err)
+    }
+
+    pendingIDs, err := db.ListStuckPendingJobs(sqlConn, pendingCutoff, s.batchSize)
     _ = sqlConn.Close()
     if err != nil {
-        return 0, fmt.Errorf("listar jobs presos: %w", err)
+        return 0, fmt.Errorf("listar jobs presos pending: %w", err)
     }
 
     recovered := 0
 
-    for _, jobID := range ids {
+    for _, jobID := range processingIDs {
         msg := queue.JobMessage{
             JobID:      jobID,
             Attempts:   0,
@@ -65,6 +78,26 @@ func (s *RecoveryService) Recover(ctx context.Context) (int, error) {
 
         if err := db.UpdateJobStatus(s.conn, jobID, "pending"); err != nil {
             return recovered, fmt.Errorf("atualizar status do job %s para pending: %w", jobID, err)
+        }
+
+        recovered++
+    }
+
+    for _, jobID := range pendingIDs {
+        msg := queue.JobMessage{
+            JobID:      jobID,
+            Attempts:   0,
+            EnqueuedAt: time.Now().UTC(),
+            LastError:  "recovered_from_stuck_pending",
+        }
+
+        if err := s.adapter.Enqueue(ctx, s.queueName, msg); err != nil {
+            return recovered, fmt.Errorf("reenfileirar job pending %s: %w", jobID, err)
+        }
+
+        // Mantemos em pending e só atualizamos updated_at para evitar reenfileirar a cada sweep.
+        if err := db.UpdateJobStatus(s.conn, jobID, "pending"); err != nil {
+            return recovered, fmt.Errorf("atualizar status do job pending %s: %w", jobID, err)
         }
 
         recovered++

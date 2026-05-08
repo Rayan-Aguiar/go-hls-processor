@@ -1,77 +1,176 @@
-# UploadVideo (estudo em Go)
+# Go HLS Processor (estudo em Go)
 
 ## Objetivo
+Projeto de estudo focado em backend com Go para pipeline de video:
+- upload de arquivo
+- enfileiramento assincrono
+- processamento FFmpeg (HLS multiqualidade)
+- geracao de thumbnail
+- status e artefatos servidos por API HTTP
+- dashboard web para acompanhar processamento e assistir videos
 
-Projeto de estudo para aprender Go na pratica, focado em backend: upload de video, processamento com ffmpeg (HLS), geracao de thumbnails, organizacao de saida por job e persistencia de metadados em PostgreSQL.
+## Estado atual (implementado)
+- Upload multipart com validacao e persistencia de job no PostgreSQL.
+- Fila Redis com produtor e consumidor desacoplados por interface.
+- Worker pool com concorrencia configuravel.
+- Retry com backoff exponencial + dead-letter queue.
+- Recovery loop para jobs presos em `processing` e tambem jobs orfaos em `pending`.
+- Conversao HLS em 4 qualidades: 360p, 480p, 720p, 1080p.
+- Geracao de thumbnail JPG por job.
+- Progresso em tempo real via SSE + Redis Pub/Sub.
+- Dashboard web com upload, listagem, progresso e player HLS com seletor de qualidade.
+- Script de desenvolvimento unico (`./dev.sh`) subindo server + worker com logs prefixados.
 
-## Visão geral
+## Arquitetura resumida
+- PostgreSQL: fonte da verdade dos jobs (status, paths, timestamps).
+- Redis:
+  - fila principal (`LIST`)
+  - fila de retry com atraso (`ZSET`)
+  - dead-letter queue (`LIST`)
+  - pub/sub de progresso (`video:progress:{jobID}`)
+- Worker:
+  - dispatcher bloqueante
+  - pool concorrente
+  - timeout por job
+  - retry e recovery
+- HTTP Server:
+  - upload, status, listagem e streaming de assets HLS
+  - endpoint SSE por job
+  - dashboard web
 
-Fluxo implementado atualmente:
-- A camada de upload valida arquivo, salva em disco e persiste o job no PostgreSQL.
-- O job é enfileirado no Redis para processamento assíncrono.
-- Um worker pool consome a fila e executa ffmpeg para HLS (360p → 1080p) e thumbnail.
-- Os artefatos ficam organizados por job e os caminhos/status são atualizados no PostgreSQL.
-- Em falhas, o worker aplica retry com backoff, dead-letter e recuperação de jobs presos em processing.
+## Fluxo ponta a ponta
+1. Cliente envia arquivo em `POST /jobs/upload`.
+2. API valida arquivo, salva em disco, cria job `pending` no PostgreSQL e publica na fila Redis.
+3. Worker consome a fila, muda status para `processing` e roda FFmpeg por qualidade.
+4. Worker publica progresso (5, 20, 40, 60, 80, 90, 100).
+5. Frontend recebe via SSE (`/jobs/{id}/events`) e atualiza barra/etapa em tempo real.
+6. Ao concluir, status vira `completed`, thumbnail e playlists ficam disponiveis.
 
-Observação:
-- O endpoint HTTP de upload ainda não foi exposto no servidor; hoje o server possui healthcheck e ping de banco.
+## Endpoints HTTP
+- `GET /`
+  - Dashboard web.
+- `GET /health`
+  - Healthcheck basico.
+- `POST /jobs/upload`
+  - Upload multipart (`file`).
+- `GET /jobs/{id}`
+  - Status de um job.
+- `GET /jobs/{id}/events`
+  - SSE de progresso do job.
+- `GET /videos?limit=200`
+  - Lista jobs/videos.
+- `GET /videos/{id}/{asset...}`
+  - Serve `master.m3u8`, playlists por qualidade, `.ts` e `thumbnail.jpg`.
 
-## Principais funcionalidades
+## Frontend dashboard
+Arquivo: `web/index.html`
 
-- Upload service (validação, persistência e enqueue)
-- Geracao de HLS em multiplas qualidades
-- Geracao de thumbnails
-- Persistencia de metadados em PostgreSQL
-- Fila Redis para distribuicao dos jobs
-- Worker pool concorrente para processamento assincrono
-- Retry com backoff + dead-letter queue
-- Recovery loop para jobs presos em processing
+Funcionalidades:
+- Upload de video.
+- Lista de videos com status (`pending`, `processing`, `completed`, `failed`).
+- Barra de progresso e descricao de etapa.
+- Atualizacao por SSE (sem polling fixo).
+- Player com hls.js priorizado para troca manual de qualidade.
+- Fallback para HLS nativo quando hls.js nao estiver disponivel.
+- Reconexao automatica de SSE em queda transitora.
 
-## Stack atual
+## Execucao local
+### Pre-requisitos
+- Go 1.26+
+- Docker + Docker Compose
+- FFmpeg instalado na maquina
+- Air instalado (`go install github.com/air-verse/air@latest`)
 
-- Go 1.26
-- PostgreSQL 16 (container)
-- Redis 7 (container)
-- FFmpeg (instalado localmente)
+### Subir infraestrutura
+```bash
+docker compose up -d
+```
 
-## Estrutura principal
+### Aplicar migrations
+```bash
+go run ./cmd/migrate
+```
 
-- `cmd/server` - processo HTTP
-- `cmd/migrate` - aplicacao das migrations
-- `cmd/worker` - consumidor da fila e pool de workers
-- `internal/queue` - adapter Redis + producer
-- `internal/worker` - dispatcher + worker pool
-- `internal/service` - upload e processamento
-- `internal/db` - conexao e repositorios
-- `migrations` - SQL de schema
+### Subir server + worker juntos (recomendado)
+```bash
+./dev.sh
+```
 
-## Estado atual do projeto
+### Alternativa (manual)
+Terminal 1:
+```bash
+go run ./cmd/server
+```
 
-- PostgreSQL como fonte da verdade de jobs (status e paths)
-- Redis como fila principal + retry delayed (ZSET) + dead-letter
-- Upload service implementado (validação, salvamento, persistência e enqueue com rollback)
-- Dispatcher + worker pool com concorrência limitada e timeout por job
-- Processamento HLS + thumbnail com atualização de status (pending/processing/completed/failed)
-- Recovery de jobs stuck em processing após reinício/falha de worker
-- Testes unitários passando para queue, worker, service, validator e ffmpeg
+Terminal 2:
+```bash
+go run ./cmd/worker
+```
 
-## Como rodar local
+### Rodar testes
+```bash
+go test ./... -count=1
+```
 
-1. Subir infraestrutura:
-	- docker compose up -d
-2. Aplicar migrations:
-	- go run ./cmd/migrate
-3. Subir servidor:
-	- go run ./cmd/server
-4. Subir worker:
-	- go run ./cmd/worker
-5. Rodar testes:
-	- go test ./... -count=1 -v
+## `dev.sh` (melhorias recentes)
+- Sobe server e worker juntos.
+- Prefixa logs por processo:
+  - `[server]`
+  - `[worker]`
+- Falha rapida se a porta 8000 estiver ocupada.
+- Encerra os dois processos juntos ao sair.
+- Se um processo cair, o script encerra o outro e finaliza.
 
-## Proximos passos
+## Variaveis de ambiente importantes
+Arquivo base: `.env`
 
-- Expor endpoint HTTP de upload (multipart) no server
-- Criar endpoint para consulta de status do job
-- Definir idempotência por job_id no processamento
-- Implementar observabilidade (métricas e logs operacionais)
-- Criar playbook de troubleshooting para operação local
+- API:
+  - `PORT`
+  - `DATA_DIR`
+  - `DATABASE_URL`
+- Redis:
+  - `REDIS_HOST`
+  - `REDIS_PORT`
+  - `REDIS_PASSWORD`
+  - `REDIS_DB`
+- Fila/worker:
+  - `QUEUE_NAME`
+  - `WORKER_POOL_SIZE`
+  - `WORKER_TIMEOUT_MINUTES`
+  - `MAX_RETRIES`
+  - `RETRY_BACKOFF_SECONDS`
+  - `RETRY_BACKOFF_MAX_SECONDS`
+  - `RETRY_QUEUE`
+  - `DEAD_LETTER_QUEUE`
+  - `RETRY_SWEEP_INTERVAL_SECONDS`
+- Recovery:
+  - `RECOVERY_SWEEP_INTERVAL_SECONDS` (atual: 5)
+  - `RECOVERY_STUCK_AFTER_SECONDS`
+  - `RECOVERY_BATCH_SIZE`
+
+## Troubleshooting rapido
+### `erro: porta 8000 ja esta em uso`
+Use:
+```bash
+ss -ltnp '( sport = :8000 )'
+```
+Mate o PID e suba novamente `./dev.sh`.
+
+### Job fica em `pending`
+- Verifique se worker esta rodando.
+- Com o recovery atual, jobs orfaos em `pending` sao reenfileirados automaticamente (janela curta).
+
+### Barra de progresso para antes do fim
+- SSE agora possui reconexao automatica no cliente.
+- O servidor envia `retry` para reconexao rapida.
+
+### Nao consigo trocar qualidade no player
+- O frontend prioriza hls.js para permitir troca manual.
+- Se cair no modo nativo, o seletor pode ficar indisponivel dependendo do navegador.
+
+## Proximos passos sugeridos
+- Observabilidade (metricas de fila, retries, tempos de processamento).
+- Endpoint/admin para visualizar DLQ e reenfileirar manualmente.
+- Testes de integracao end-to-end do fluxo upload -> completed.
+- Limpeza/retencao de artefatos antigos no `data/`.
+- Hardening (auth, limites por usuario, rate limit, quotas).

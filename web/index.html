@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Video Processor - Dashboard</title>
+    <style>
+        :root {
+            --bg: #f2efe8;
+            --paper: #fffdf8;
+            --ink: #1b1b1b;
+            --muted: #5f5a50;
+            --line: #d9d1c2;
+            --accent: #0d6b4d;
+            --accent-2: #0b5a41;
+            --danger: #9f1d1d;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 10% 10%, #fff8e6 0%, transparent 35%),
+                radial-gradient(circle at 90% 20%, #d9f5ea 0%, transparent 35%),
+                var(--bg);
+        }
+
+        .container {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+            letter-spacing: 0.3px;
+        }
+
+        .subtitle {
+            margin: 0 0 22px;
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 10px 24px rgba(30, 30, 30, 0.06);
+        }
+
+        .panel h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+            font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .row+.row {
+            margin-top: 10px;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px dashed var(--line);
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        button,
+        select {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #fff;
+            padding: 8px 10px;
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+            transition: 160ms ease;
+        }
+
+        button.primary {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        button.primary:hover {
+            background: var(--accent-2);
+            border-color: var(--accent-2);
+        }
+
+        button.ghost:hover {
+            background: #f5f2eb;
+        }
+
+        .status {
+            margin-top: 10px;
+            min-height: 20px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .status.error {
+            color: var(--danger);
+        }
+
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .videos {
+            display: grid;
+            gap: 10px;
+            max-height: 520px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .video-item {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 68px 1fr auto;
+            gap: 10px;
+            align-items: center;
+            background: #fff;
+        }
+
+        .video-item.pending {
+            border-left: 4px solid #c48a16;
+        }
+
+        .video-item.processing {
+            border-left: 4px solid #2f6da8;
+        }
+
+        .video-item.completed {
+            border-left: 4px solid #22834e;
+        }
+
+        .video-item.failed {
+            border-left: 4px solid #9f1d1d;
+        }
+
+        .thumb {
+            width: 68px;
+            height: 44px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: #ece8df;
+        }
+
+        .meta {
+            min-width: 0;
+        }
+
+        .meta .id {
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .meta .line {
+            margin-top: 2px;
+            font-size: 14px;
+        }
+
+        .pill {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+            color: #fff;
+            border-radius: 99px;
+            padding: 4px 8px;
+        }
+
+        .pill.pending {
+            background: #c48a16;
+        }
+
+        .pill.processing {
+            background: #2f6da8;
+        }
+
+        .pill.completed {
+            background: #22834e;
+        }
+
+        .pill.failed {
+            background: #9f1d1d;
+        }
+
+        .progress-wrap {
+            grid-column: 1 / -1;
+            display: none;
+        }
+
+        .video-item.pending .progress-wrap,
+        .video-item.processing .progress-wrap,
+        .video-item.pending-progress .progress-wrap {
+            display: block;
+        }
+
+        .progress-track {
+            height: 5px;
+            background: #e5e1d8;
+            border-radius: 99px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 99px;
+            background: linear-gradient(90deg, #2f6da8, #39a0f5);
+            transition: width 0.4s ease;
+        }
+
+        .progress-label {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .player-wrap {
+            display: grid;
+            gap: 10px;
+        }
+
+        .player-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 12px;
+            background: #000;
+            max-height: 65vh;
+        }
+
+        .help {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 980px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .videos {
+                max-height: 280px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Video Processor Dashboard</h1>
+        <p class="subtitle">Envie vídeos, acompanhe o status e valide as qualidades HLS no player.</p>
+
+        <div class="grid">
+            <section class="panel">
+                <h2>Envio e Lista</h2>
+
+                <form id="uploadForm">
+                    <div class="row">
+                        <input id="fileInput" type="file" name="file" accept="video/*" required />
+                    </div>
+                    <div class="row">
+                        <button class="primary" type="submit">Enviar vídeo</button>
+                        <button id="refreshBtn" class="ghost" type="button">Atualizar lista</button>
+                    </div>
+                </form>
+
+                <div id="uploadStatus" class="status"></div>
+
+                <div class="list-header">
+                    <h2 style="margin: 0;">Vídeos</h2>
+                    <span id="videoCount" class="help"></span>
+                </div>
+
+                <div id="videoList" class="videos"></div>
+            </section>
+
+            <section class="panel player-wrap">
+                <div class="player-bar">
+                    <h2 style="margin: 0;">Player</h2>
+                    <div class="row">
+                        <label for="qualitySelect">Qualidade</label>
+                        <select id="qualitySelect" disabled>
+                            <option value="-1">Auto</option>
+                        </select>
+                    </div>
+                </div>
+
+                <video id="videoPlayer" controls playsinline></video>
+                <p id="playerInfo" class="help">Selecione um vídeo concluído para reproduzir.</p>
+                <p class="help">Em navegadores com HLS nativo, a troca manual de qualidade pode ficar indisponível.</p>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        const uploadForm = document.getElementById("uploadForm");
+        const fileInput = document.getElementById("fileInput");
+        const refreshBtn = document.getElementById("refreshBtn");
+        const uploadStatus = document.getElementById("uploadStatus");
+        const videoList = document.getElementById("videoList");
+        const videoCount = document.getElementById("videoCount");
+        const videoPlayer = document.getElementById("videoPlayer");
+        const playerInfo = document.getElementById("playerInfo");
+        const qualitySelect = document.getElementById("qualitySelect");
+
+        let hls = null;
+        // Map<jobID, EventSource>
+        const activeSources = new Map();
+
+        async function loadVideos() {
+            try {
+                const res = await fetch("/videos?limit=200");
+                if (!res.ok) {
+                    throw new Error("Falha ao listar vídeos");
+                }
+
+                const data = await res.json();
+                const videos = Array.isArray(data.videos) ? data.videos : [];
+                videoCount.textContent = `${videos.length} item(ns)`;
+
+                if (videos.length === 0) {
+                    videoList.innerHTML = "<p class='help'>Nenhum vídeo enviado ainda.</p>";
+                    return;
+                }
+
+                videoList.innerHTML = videos.map((item) => renderVideoItem(item)).join("");
+                bindVideoClicks(videos);
+                // assina progresso para jobs ainda em andamento
+                videos.forEach((v) => {
+                    const s = normalizeStatus(v.status);
+                    if (s === "pending" || s === "processing") {
+                        subscribeProgress(v.id);
+                    }
+                });
+            } catch (err) {
+                videoList.innerHTML = `<p class='help'>Erro ao carregar lista: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function renderVideoItem(item) {
+            const statusClass = normalizeStatus(item.status);
+            const initialPercent = statusClass === "completed" ? 100 : 0;
+            const initialLabel = statusClass === "pending"
+                ? "Aguardando worker..."
+                : statusClass === "processing"
+                    ? "Processando..."
+                    : statusClass === "failed"
+                        ? "Falhou"
+                        : "Concluído ✓";
+            const thumb = item.thumbnail_url
+                ? `<img class="thumb" src="${item.thumbnail_url}" alt="thumb ${item.id}" />`
+                : `<div class="thumb"></div>`;
+
+            return `
+          <div class="video-item ${statusClass}" data-id="${item.id}">
+            ${thumb}
+            <div class="meta">
+              <div class="id">${escapeHtml(item.id)}</div>
+              <div class="line">Criado em ${formatDate(item.created_at)}</div>
+            </div>
+            <span class="pill ${statusClass}">${escapeHtml(item.status || "unknown")}</span>
+            <div class="progress-wrap">
+              <div class="progress-track">
+                <div class="progress-bar" id="bar-${item.id}" style="width:${initialPercent}%"></div>
+              </div>
+              <div class="progress-label" id="label-${item.id}">${initialLabel}</div>
+            </div>
+          </div>
+        `;
+        }
+
+        function bindVideoClicks(videos) {
+            const map = new Map(videos.map((v) => [v.id, v]));
+            document.querySelectorAll(".video-item").forEach((el) => {
+                el.addEventListener("click", () => {
+                    const id = el.getAttribute("data-id");
+                    const item = map.get(id);
+                    if (!item) return;
+                    openVideo(item);
+                });
+            });
+        }
+
+        // ── SSE progress ─────────────────────────────────────────────────────────
+
+        function subscribeProgress(jobID) {
+            if (activeSources.has(jobID)) return;
+
+            const es = new EventSource(`/jobs/${jobID}/events`);
+            activeSources.set(jobID, es);
+
+            es.onmessage = function (evt) {
+                let u;
+                try { u = JSON.parse(evt.data); } catch { return; }
+
+                applyProgressUpdate(u);
+
+                if (u.done || u.failed) {
+                    es.close();
+                    activeSources.delete(jobID);
+                    // recarrega lista para pegar thumbnail e status final
+                    setTimeout(loadVideos, 600);
+                }
+            };
+
+            es.onerror = function () {
+                // Não fecha aqui: EventSource já tenta reconectar automaticamente.
+                // Se fecharmos manualmente, podemos perder eventos finais (90/100%).
+                if (es.readyState === EventSource.CLOSED) {
+                    activeSources.delete(jobID);
+                }
+            };
+        }
+
+        function applyProgressUpdate(u) {
+            if (!u || !u.job_id) return;
+
+            const bar = document.getElementById(`bar-${u.job_id}`);
+            const label = document.getElementById(`label-${u.job_id}`);
+            const item = document.querySelector(`.video-item[data-id="${u.job_id}"]`);
+            const pill = item ? item.querySelector(".pill") : null;
+
+            if (bar && u.percent >= 0) {
+                bar.style.width = `${u.percent}%`;
+            }
+            if (label) {
+                label.textContent = u.failed
+                    ? `Erro: ${u.stage}`
+                    : u.done
+                        ? "Concluído ✓"
+                        : `${u.stage} — ${u.percent}%`;
+            }
+            if (item) {
+                if (u.failed) {
+                    item.classList.remove("processing", "pending", "completed");
+                    item.classList.add("failed");
+                    if (pill) {
+                        pill.classList.remove("processing", "pending", "completed");
+                        pill.classList.add("failed");
+                        pill.textContent = "failed";
+                    }
+                } else if (u.done) {
+                    item.classList.remove("processing", "pending", "failed");
+                    item.classList.add("completed");
+                    if (pill) {
+                        pill.classList.remove("processing", "pending", "failed");
+                        pill.classList.add("completed");
+                        pill.textContent = "completed";
+                    }
+                } else if (u.percent > 0 || u.stage !== "conectado") {
+                    item.classList.remove("pending", "failed", "completed");
+                    item.classList.add("processing");
+                    if (pill) {
+                        pill.classList.remove("pending", "failed", "completed");
+                        pill.classList.add("processing");
+                        pill.textContent = "processing";
+                    }
+                }
+            }
+        }
+
+        // ── player ───────────────────────────────────────────────────────────────
+
+        function openVideo(item) {
+            if (!item.master_playlist_url) {
+                playerInfo.textContent = `Job ${item.id} ainda não está pronto. Status: ${item.status}.`;
+                clearPlayer();
+                return;
+            }
+
+            playHLS(item.master_playlist_url, item.id);
+        }
+
+        function clearPlayer() {
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            videoPlayer.removeAttribute("src");
+            videoPlayer.load();
+            qualitySelect.innerHTML = '<option value="-1">Auto</option>';
+            qualitySelect.disabled = true;
+        }
+
+        function playHLS(src, id) {
+            clearPlayer();
+
+            // Sempre prioriza hls.js para permitir troca manual de qualidade.
+            if (window.Hls && Hls.isSupported()) {
+                hls = new Hls({
+                    enableWorker: true,
+                    capLevelToPlayerSize: true,
+                });
+
+                hls.loadSource(src);
+                hls.attachMedia(videoPlayer);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    const options = ['<option value="-1">Auto</option>'];
+                    hls.levels.forEach((level, index) => {
+                        const label = level.height ? `${level.height}p` : `Level ${index}`;
+                        options.push(`<option value="${index}">${label}</option>`);
+                    });
+                    qualitySelect.innerHTML = options.join("");
+                    qualitySelect.disabled = false;
+                    playerInfo.textContent = `Reproduzindo job ${id}. Você pode trocar a qualidade no seletor.`;
+                });
+
+                hls.on(Hls.Events.ERROR, function (_event, data) {
+                    playerInfo.textContent = `Erro no player: ${data?.details || "desconhecido"}`;
+                });
+
+                return;
+            }
+
+            // Fallback para HLS nativo apenas quando hls.js não está disponível.
+            if (videoPlayer.canPlayType("application/vnd.apple.mpegurl")) {
+                videoPlayer.src = src;
+                playerInfo.textContent = `Reproduzindo job ${id} (HLS nativo).`;
+                qualitySelect.innerHTML = '<option value="-1">Auto (nativo)</option>';
+                qualitySelect.disabled = true;
+                return;
+            }
+
+            playerInfo.textContent = "Seu navegador não suporta HLS.";
+        }
+
+        qualitySelect.addEventListener("change", function () {
+            if (!hls) return;
+            const selected = Number(qualitySelect.value);
+            hls.currentLevel = selected;
+        });
+
+        uploadForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const file = fileInput.files && fileInput.files[0];
+
+            if (!file) {
+                setUploadStatus("Selecione um arquivo de vídeo.", true);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            setUploadStatus("Enviando arquivo...");
+
+            try {
+                const res = await fetch("/jobs/upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    throw new Error(data.error || "Falha no upload");
+                }
+
+                setUploadStatus(`Upload recebido. Job: ${data.job_id}`);
+                fileInput.value = "";
+                await loadVideos();
+                subscribeProgress(data.job_id);
+                // marca item como em progresso até chegar o primeiro evento SSE
+                const newItem = document.querySelector(`.video-item[data-id="${data.job_id}"]`);
+                if (newItem) newItem.classList.add("processing");
+            } catch (err) {
+                setUploadStatus(err.message, true);
+            }
+        });
+
+        refreshBtn.addEventListener("click", loadVideos);
+
+        function setUploadStatus(message, isError = false) {
+            uploadStatus.textContent = message || "";
+            uploadStatus.className = isError ? "status error" : "status";
+        }
+
+        function formatDate(value) {
+            if (!value) return "-";
+            const dt = new Date(value);
+            if (Number.isNaN(dt.getTime())) return value;
+            return dt.toLocaleString("pt-BR");
+        }
+
+        function normalizeStatus(status) {
+            if (!status) return "pending";
+            const v = String(status).toLowerCase();
+            if (["pending", "processing", "completed", "failed"].includes(v)) {
+                return v;
+            }
+            return "pending";
+        }
+
+        function escapeHtml(raw) {
+            return String(raw)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;");
+        }
+
+        loadVideos();
+
+        // Sem polling contínuo: atualizamos por SSE e por ações do usuário.
+        // Quando o usuário volta para a aba/janela, sincroniza a listagem uma vez.
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) {
+                loadVideos();
+            }
+        });
+        window.addEventListener("focus", loadVideos);
+    </script>
+</body>
+
+</html>
