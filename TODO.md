@@ -22,7 +22,7 @@
 
 6. [x] Geração de thumbnails
    - Criar função para extrair thumbnails (configurável: tempo/quantidade).
-   - Critério: thumbnail(s) gerado(s) e referenciados no SQLite.
+   - Critério: thumbnail(s) gerado(s) e referenciados no PostgreSQL.
 
 7. [ ] Worker pool e concorrência
     - Implementar workers que consumam jobs e respeitem limites de concorrência.
@@ -37,7 +37,7 @@
     - Fases de implementação:
        - [x] Fase 1 - Infra Redis local com Docker Compose.
        - [x] Fase 2 - Contrato de fila em Go (producer/consumer desacoplados por interface).
-       - [x] Fase 3 - Enfileirar job no Redis ao criar job no SQLite.
+       - [x] Fase 3 - Enfileirar job no Redis ao criar job no PostgreSQL.
       - [x] Fase 4 - Dispatcher + worker pool (concorrência limitada).
        - [ ] Fase 5 - Retry com backoff + limite de tentativas + dead-letter.
        - [ ] Fase 6 - Recuperação de jobs presos em processing (reaper).
