@@ -1,6 +1,6 @@
 # Video Processor
 
-> Pipeline de video em Go com HLS adaptativo, processamento assincrono e observabilidade completa de ponta a ponta.
+> Backend em Go para pipeline de video com HLS adaptativo, processamento assincrono e observabilidade completa de ponta a ponta.
 
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -11,9 +11,9 @@
 
 ## Visao Geral
 
-Video Processor foi desenhado para transformar uploads de video em uma experiencia pronta para consumo: o arquivo entra por uma API HTTP, e em seguida segue para uma fila assincrona, onde um worker processa o material com FFmpeg, gera HLS em multiplas qualidades, cria thumbnail e disponibiliza todos os artefatos para reproducao imediata.
+Video Processor foi desenhado com foco principal no backend em Go para transformar uploads de video em uma experiencia pronta para consumo: o arquivo entra por uma API HTTP, e em seguida segue para uma fila assincrona, onde um worker processa o material com FFmpeg, gera HLS em multiplas qualidades, cria thumbnail e disponibiliza todos os artefatos para reproducao imediata.
 
-O valor central do projeto e entregar um fluxo completo e confiavel para processamento de midia, com separacao clara entre API, fila, worker e camada de observabilidade. O resultado e uma base tecnica robusta, preparada para crescimento, monitoramento e evolucao sem acoplamento desnecessario.
+O valor central do projeto e entregar um fluxo completo e confiavel para processamento de midia, com separacao clara entre API, fila, worker e camada de observabilidade. A camada web foi mantida propositalmente simples para validar visualmente todo o comportamento do backend em tempo real, demonstrando com clareza que o pipeline opera como esperado. O resultado e uma base tecnica robusta, preparada para crescimento, monitoramento e evolucao sem acoplamento desnecessario.
 
 ## Preview
 
@@ -29,7 +29,7 @@ O valor central do projeto e entregar um fluxo completo e confiavel para process
 - Conversao HLS em multiplas qualidades, com playlists e segmentos prontos para playback adaptativo.
 - Geracao automatica de thumbnail por job, melhorando a navegacao visual na lista de videos.
 - Atualizacao em tempo real via SSE e Redis Pub/Sub, eliminando polling fixo e deixando a interface mais fluida.
-- Dashboard web para acompanhar status, progresso e playback em uma unica tela.
+- Dashboard web enxuto para validar visualmente status, progresso e playback em uma unica tela.
 - Swagger UI e arquivo OpenAPI para exploracao rapida da API e integracao com outros sistemas.
 - Stack de observabilidade com metricas da aplicacao, exporters e dashboards provisionados automaticamente.
 
@@ -45,7 +45,7 @@ O valor central do projeto e entregar um fluxo completo e confiavel para process
 | Observabilidade | Prometheus, Grafana e exporters para Postgres e Redis | Diagnostico rapido de gargalos e regressao de performance |
 | Operacao local | `dev.sh` sobe server e worker juntos com logs prefixados | Desenvolvimento mais previsivel e ergonomico |
 | Qualidade de API | Endpoints documentados e contratos bem definidos | Integracao mais simples para clientes e colaboradores |
-| Frontend | Dashboard leve, responsivo e com fallback de playback | Boa experiencia mesmo em navegadores com suporte variavel |
+| Frontend | Interface web enxuta para validacao visual do pipeline com fallback de playback | Evidencia de forma pratica que o backend cumpre o fluxo esperado |
 
 ## Stack Utilizada
 
@@ -57,7 +57,7 @@ O valor central do projeto e entregar um fluxo completo e confiavel para process
 | Fila e eventos | Redis + `go-redis/v9` |
 | Midia | FFmpeg, HLS, geracao de thumbnail |
 | Observabilidade | Prometheus, Grafana, PostgreSQL Exporter, Redis Exporter |
-| Frontend | HTML, CSS, JavaScript e `hls.js` no dashboard |
+| Frontend | HTML, CSS, JavaScript e `hls.js` em uma camada de validacao visual |
 | Ferramentas | Docker Compose, Air, Swagger UI, load test CLI |
 
 ## Como Rodar Localmente
@@ -260,7 +260,7 @@ flowchart LR
 
 ## Experiencia do Usuario
 
-- Interface limpa e objetiva, com foco em status, progresso e consumo rapido do video.
+- Interface limpa e objetiva, focada em confirmar visualmente o comportamento do backend de forma rapida.
 - Feedback visual imediato para pending, processing, completed e failed.
 - Atualizacao sem polling fixo, o que reduz latencia perceptivel e ruido de rede.
 - Player com suporte a troca de qualidade via hls.js, com fallback quando necessario.
